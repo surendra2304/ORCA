@@ -23,3 +23,7 @@ build/
 .vscode/
 *.swp
 *.swo
+
+# Downloaded geodata
+data/geo/india_eez.geojson
+
