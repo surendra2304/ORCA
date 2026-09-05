@@ -1,17 +1,28 @@
 import argparse
+from datetime import datetime, timezone
 import json
 import sys
+import time
 import httpx
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 DEFAULT_QUERY = "Is it safe to fish near Visakhapatnam tomorrow?"
-SERVER_URL = "http://127.0.0.1:8000/query"
+DEFAULT_BASE_URL = "http://127.0.0.1:8000"
+
+
+def format_ts(ts_str: str) -> str:
+    """Formats an ISO timestamp to [HH:MM:SS.mmm]."""
+    try:
+        dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        return dt.strftime("%H:%M:%S.%f")[:-3]
+    except Exception:
+        return datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ORCA Phase 1 CLI Test Client")
+    parser = argparse.ArgumentParser(description="ORCA Phase 2 Live SSE Streaming Client")
     parser.add_argument(
         "query",
         nargs="?",
@@ -24,87 +35,144 @@ def main():
         help="Language code (default: 'en')",
     )
     parser.add_argument(
-        "--url",
-        default=SERVER_URL,
-        help=f"ORCA query endpoint URL (default: {SERVER_URL})",
+        "--base-url",
+        default=DEFAULT_BASE_URL,
+        help=f"ORCA base URL (default: {DEFAULT_BASE_URL})",
     )
     args = parser.parse_args()
 
-    print("=" * 65)
-    print("ORCA Reasoning Engine - Synchronous Query Client")
-    print("=" * 65)
+    base_url = args.base_url.rstrip("/")
+
+    print("=" * 70)
+    print("ORCA Reasoning Engine - Live SSE Streaming Client")
+    print("=" * 70)
     print(f"Query:    '{args.query}'")
     print(f"Language: {args.lang}")
-    print(f"Endpoint: {args.url}")
-    print("-" * 65)
-    print("Sending request... (agents running in batches with simulated latency)")
+    print(f"Base URL: {base_url}")
+    print("-" * 70)
 
+    # 1. Start query as background task
+    t0 = time.perf_counter()
     try:
-        with httpx.Client(timeout=60.0) as client:
-            resp = client.post(args.url, json={"text": args.query, "language": args.lang})
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.post(
+                f"{base_url}/query",
+                json={"text": args.query, "language": args.lang},
+            )
             resp.raise_for_status()
-            data = resp.json()
+            init_data = resp.json()
     except httpx.ConnectError:
-        print(f"\n[ERROR] Could not connect to {args.url}.")
+        print(f"\n[ERROR] Could not connect to {base_url}.")
         print("Please ensure the FastAPI server is running with:")
         print("  uv run uvicorn app.main:app --reload")
         sys.exit(1)
     except Exception as exc:
-        print(f"\n[ERROR] Request failed: {exc}")
+        print(f"\n[ERROR] Failed to start query: {exc}")
         sys.exit(1)
 
-    session_id = data.get("session_id", "N/A")
-    plan = data.get("plan", {})
-    needed_agents = plan.get("needed_agents", [])
-    execution_plan = plan.get("execution_plan", [])
-    agent_outputs = data.get("agent_outputs", {})
-    final_answer = data.get("final_answer", "")
-    duration_ms = data.get("duration_ms", 0)
-    trace = data.get("trace", [])
+    post_latency_ms = int((time.perf_counter() - t0) * 1000)
+    session_id = init_data.get("session_id")
+    if not session_id:
+        print(f"\n[ERROR] No session_id returned: {init_data}")
+        sys.exit(1)
 
-    print(f"\n[SUCCESS] Response received in {duration_ms} ms (~{duration_ms/1000:.2f}s)")
-    print(f"Session ID: {session_id}")
+    print(f"POST /query returned session_id={session_id} in {post_latency_ms} ms")
+    print(f"Connecting to live SSE stream: {base_url}/stream/{session_id}")
+    print("-" * 70)
 
-    print("\n--- EXECUTION PLAN ---")
-    print(f"Needed Agents ({len(needed_agents)}): {', '.join(needed_agents)}")
-    for idx, batch in enumerate(execution_plan):
-        print(f"  Batch {idx + 1} (parallel): {', '.join(batch)}")
+    # 2. Connect to SSE stream
+    stream_url = f"{base_url}/stream/{session_id}"
+    event_count = 0
+    final_advisory_text = None
 
-    print("\n--- AGENT OUTPUTS SUMMARY ---")
-    for agent_name, payload in agent_outputs.items():
-        source = payload.get("source", "unknown")
-        print(f"  * [{agent_name.upper()}] (Source: {source})")
-        if agent_name == "geospatial":
-            print(f"      Dist to PFZ:  {payload.get('dist_to_pfz_km')} km (bearing {payload.get('bearing_to_pfz_deg')} deg)")
-            print(f"      Dist to Port: {payload.get('dist_to_port_km')} km ({payload.get('port_name')})")
-        elif agent_name == "weather":
-            print(f"      Wind: {payload.get('wind_knots')} kts (gusts {payload.get('gusts_knots')} kts), Rain: {payload.get('rain_mm')} mm")
-        elif agent_name == "ocean":
-            print(f"      Waves: {payload.get('wave_height_m')} m, Swell: {payload.get('swell_height_m')} m, SST: {payload.get('sst_c')} C")
-        elif agent_name == "pfz":
-            zones = payload.get("zones", [])
-            print(f"      Advisory ID: {payload.get('advisory_id')}, Zones: {len(zones)}")
-        elif agent_name == "satellite":
-            print(f"      Chlorophyll-a: {payload.get('chlorophyll_mg_m3')} mg/m3, SST: {payload.get('sst_c')} C")
-        elif agent_name == "hazard":
-            alerts = payload.get("alerts", [])
-            print(f"      Alerts: {len(alerts)} ({', '.join(a.get('type') for a in alerts)})")
-        else:
-            print(f"      Data: {json.dumps(payload, indent=8)}")
+    try:
+        with httpx.Client(timeout=60.0) as client:
+            with client.stream("GET", stream_url) as stream:
+                if stream.status_code != 200:
+                    print(f"\n[ERROR] Stream endpoint returned HTTP {stream.status_code}")
+                    sys.exit(1)
 
-    print("\n--- FINAL ADVISORY ---")
-    print(final_answer.strip())
+                current_event = None
+                current_data_lines = []
 
-    print("\n--- TRACE SUMMARY ---")
-    print(f"Total events recorded: {len(trace)}")
-    for ev in trace:
-        ev_type = ev.get("event")
-        ag = ev.get("agent") or "system"
-        ts = ev.get("ts", "")[-12:]
-        print(f"  [{ts}] {ev_type:<14} (agent: {ag})")
+                for raw_line in stream.iter_lines():
+                    line = raw_line.strip()
+                    if not line:
+                        if current_event and current_data_lines:
+                            raw_json = "\n".join(current_data_lines)
+                            try:
+                                envelope = json.loads(raw_json)
+                            except Exception:
+                                envelope = {}
 
-    print("=" * 65)
+                            event_count += 1
+                            seq = envelope.get("seq", event_count)
+                            ts_formatted = format_ts(envelope.get("ts", ""))
+                            etype = envelope.get("type", current_event)
+                            payload = envelope.get("payload", {})
+                            agent = payload.get("agent", "")
+
+                            # Generate clean summary
+                            summary = ""
+                            if etype == "run_started":
+                                summary = f"Started session {envelope.get('run_id')}"
+                            elif etype == "plan_created":
+                                needed = payload.get("needed_agents", [])
+                                batches = len(payload.get("execution_plan", []))
+                                summary = f"Plan: {needed} across {batches} batch(es)"
+                            elif etype == "agent_started":
+                                summary = f"Agent {agent} started execution"
+                            elif etype == "agent_result":
+                                summary = payload.get("summary", f"Agent {agent} finished")
+                            elif etype == "final_answer":
+                                final_advisory_text = payload.get("text", "")
+                                summary = f"Final answer synthesized ({len(final_advisory_text)} chars)"
+                            elif etype == "run_complete":
+                                dur = payload.get("duration_ms", 0)
+                                run_list = payload.get("agents_run", [])
+                                failed_list = payload.get("agents_failed", [])
+                                summary = f"Run complete in {dur}ms (agents: {len(run_list)} run, {len(failed_list)} failed)"
+                            elif etype == "error":
+                                summary = f"ERROR in {payload.get('stage')}: {payload.get('message')}"
+                            else:
+                                summary = str(payload)[:60]
+
+                            agent_col = f"[{agent}]" if agent else ""
+                            print(f"[{ts_formatted}] #{seq:<2} {etype:<15} {agent_col:<14} {summary}")
+
+                            if etype == "run_complete":
+                                break
+
+                        current_event = None
+                        current_data_lines = []
+                        continue
+
+                    if line.startswith(":"):
+                        # SSE comment heartbeat
+                        continue
+                    if line.startswith("event:"):
+                        current_event = line[len("event:"):].strip()
+                    elif line.startswith("data:"):
+                        current_data_lines.append(line[len("data:"):].strip())
+
+    except httpx.ConnectError:
+        print(f"\n[ERROR] Lost connection to SSE stream at {stream_url}")
+        sys.exit(1)
+    except Exception as exc:
+        print(f"\n[ERROR] Stream error: {exc}")
+        sys.exit(1)
+
+    total_wall_ms = int((time.perf_counter() - t0) * 1000)
+
+    if final_advisory_text:
+        print("\n" + "=" * 70)
+        print("--- FINAL ADVISORY ---")
+        print(final_advisory_text.strip())
+        print("=" * 70)
+
+    print(f"\n[PASS] Stream finished cleanly. Total events: {event_count}. Total wall-clock time: {total_wall_ms} ms (~{total_wall_ms/1000:.2f}s)\n")
 
 
 if __name__ == "__main__":
     main()
+

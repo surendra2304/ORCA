@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import random
 from typing import Any, Dict
 
@@ -43,6 +44,10 @@ class MockAgent:
 
         # 3. Perform agent work wrapped in error envelope
         try:
+            force_fail = os.getenv("ORCA_FORCE_AGENT_FAILURE", "").strip().lower()
+            if force_fail and force_fail == self.name.lower():
+                raise RuntimeError(f"Forced agent failure via ORCA_FORCE_AGENT_FAILURE for {self.name}")
+
             payload = await self.execute(state)
             status = "ok"
             summary = self.summarize(payload)
