@@ -40,6 +40,12 @@ def main():
         help="Vessel class (default: 'small_fishing_boat')",
     )
     parser.add_argument(
+        "--mode",
+        choices=["mock", "real"],
+        default="real",
+        help="Execution mode (default: 'real')",
+    )
+    parser.add_argument(
         "--base-url",
         default=DEFAULT_BASE_URL,
         help=f"ORCA base URL (default: {DEFAULT_BASE_URL})",
@@ -54,6 +60,7 @@ def main():
     print(f"Query:        '{args.query}'")
     print(f"Language:     {args.lang}")
     print(f"Vessel Class: {args.vessel}")
+    print(f"Mode:         {args.mode}")
     print(f"Base URL:     {base_url}")
     print("-" * 70)
 
@@ -67,6 +74,7 @@ def main():
                     "text": args.query,
                     "language": args.lang,
                     "vessel_class": args.vessel,
+                    "mode": args.mode,
                 },
             )
             resp.raise_for_status()
@@ -133,6 +141,10 @@ def main():
                                 summary = f"Plan: {needed} across {batches} batch(es)"
                             elif etype == "agent_started":
                                 summary = f"Agent {agent} started execution"
+                            elif etype == "tool_called":
+                                tool_name = payload.get("tool", "")
+                                params = payload.get("params", {})
+                                summary = f"Invoked {tool_name} params={params}"
                             elif etype == "agent_result":
                                 summary = payload.get("summary", f"Agent {agent} finished")
                             elif etype == "verdict":

@@ -4,6 +4,7 @@ import logging
 import time
 from typing import Any, Dict, Optional
 
+from app.config import settings
 from app.core.sessions import SessionManager, sessions as default_sessions
 from app.graph.build_graph import build_graph
 from app.graph.state import ORCAState
@@ -22,6 +23,7 @@ async def run_graph_streaming(
     language: str = "en",
     sessions: Optional[SessionManager] = None,
     vessel_class: str = "small_fishing_boat",
+    mode: Optional[str] = None,
 ) -> None:
     """
     Executes the ORCA reasoning graph as a streaming background task.
@@ -31,6 +33,7 @@ async def run_graph_streaming(
     """
     sm = sessions or default_sessions
     start_time = time.perf_counter()
+    effective_mode = mode if mode in ("mock", "real") else ("mock" if settings.MOCK_MODE else "real")
 
     async def on_trace_emit(entry: Dict[str, Any]) -> None:
         event_type = entry.get("event", "unknown")
@@ -67,6 +70,7 @@ async def run_graph_streaming(
         "language": language or "en",
         "session_id": session_id,
         "vessel_class": vessel_class or "small_fishing_boat",
+        "mode": effective_mode,
         "safety_relevant": True,
         "verdict": None,
         "entities": {"lat": None, "lon": None, "location_name": None, "date_hint": None},

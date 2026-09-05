@@ -4,9 +4,11 @@ import uuid
 
 from langgraph.graph import END, START, StateGraph
 
+from app.config import settings
 from app.graph.aggregator import aggregator_node
 from app.graph.executor import executor_node
 from app.graph.planner import planner_node
+from app.graph.resolver import resolver_node
 from app.graph.state import ORCAState
 from app.graph.trace import TraceCollector
 from app.graph.verdict import verdict_node
@@ -15,13 +17,16 @@ from app.graph.verdict import verdict_node
 def build_graph(collector: TraceCollector):
     """
     Constructs and compiles the ORCA reasoning StateGraph:
-    START -> planner -> executor -> verdict -> aggregator -> END.
+    START -> planner -> resolver -> executor -> verdict -> aggregator -> END.
     Node functions close over the per-run TraceCollector instance.
     """
     builder = StateGraph(ORCAState)
 
     async def _planner_node(state: ORCAState) -> Dict[str, Any]:
         return await planner_node(state, collector)
+
+    async def _resolver_node(state: ORCAState) -> Dict[str, Any]:
+        return await resolver_node(state, collector)
 
     async def _executor_node(state: ORCAState) -> Dict[str, Any]:
         return await executor_node(state, collector)
@@ -33,12 +38,14 @@ def build_graph(collector: TraceCollector):
         return await aggregator_node(state, collector)
 
     builder.add_node("planner", _planner_node)
+    builder.add_node("resolver", _resolver_node)
     builder.add_node("executor", _executor_node)
     builder.add_node("verdict", _verdict_node)
     builder.add_node("aggregator", _aggregator_node)
 
     builder.add_edge(START, "planner")
-    builder.add_edge("planner", "executor")
+    builder.add_edge("planner", "resolver")
+    builder.add_edge("resolver", "executor")
     builder.add_edge("executor", "verdict")
     builder.add_edge("verdict", "aggregator")
     builder.add_edge("aggregator", END)
@@ -51,6 +58,7 @@ async def run_graph(
     language: str = "en",
     session_id: Optional[str] = None,
     vessel_class: str = "small_fishing_boat",
+    mode: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], int]:
     """
     Helper function that initializes state, invokes the LangGraph workflow
@@ -59,6 +67,7 @@ async def run_graph(
     """
     start_time = time.perf_counter()
     sid = session_id or str(uuid.uuid4())
+    effective_mode = mode if mode in ("mock", "real") else ("mock" if settings.MOCK_MODE else "real")
     collector = TraceCollector()
 
     initial_state: ORCAState = {
@@ -66,6 +75,7 @@ async def run_graph(
         "language": language or "en",
         "session_id": sid,
         "vessel_class": vessel_class or "small_fishing_boat",
+        "mode": effective_mode,
         "safety_relevant": True,
         "verdict": None,
         "entities": {"lat": None, "lon": None, "location_name": None, "date_hint": None},
@@ -101,4 +111,3 @@ async def run_graph(
     final_state["trace"] = collector.snapshot()
 
     return final_state, duration_ms
-

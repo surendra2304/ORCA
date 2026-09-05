@@ -25,6 +25,7 @@ class QueryRequest(BaseModel):
     text: str = Field(..., description="User query text")
     language: str = Field("en", description="ISO 639-1 language code")
     vessel_class: str = Field("small_fishing_boat", description="Vessel class for safety rules")
+    mode: Optional[str] = Field(None, description="Execution mode: mock | real")
     sync: Optional[bool] = Field(None, description="Optional sync flag in body")
 
 
@@ -47,7 +48,7 @@ async def health_check():
 async def query_endpoint(req: QueryRequest, sync: bool = False):
     """
     Reasoning query endpoint.
-    By default, starts the graph as a BACKGROUND task and returns {"session_id": ...} immediately (<300ms).
+    By default, starts the graph as a BACKGROUND task and returns {"session_id": ..., "mode": ...} immediately (<300ms).
     If sync=True (via query param ?sync=true or body flag), executes synchronously and returns full result JSON.
     """
     vessel_class = req.vessel_class or "small_fishing_boat"
@@ -57,6 +58,13 @@ async def query_endpoint(req: QueryRequest, sync: bool = False):
             detail=f"Invalid vessel_class '{vessel_class}'. Valid options: {VESSEL_CLASSES}",
         )
 
+    effective_mode = req.mode if req.mode is not None else ("mock" if settings.MOCK_MODE else "real")
+    if effective_mode not in ("mock", "real"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid mode '{effective_mode}'. Valid options: ['mock', 'real']",
+        )
+
     is_sync = sync or bool(req.sync)
 
     if is_sync:
@@ -64,11 +72,13 @@ async def query_endpoint(req: QueryRequest, sync: bool = False):
             query=req.text,
             language=req.language,
             vessel_class=vessel_class,
+            mode=effective_mode,
         )
         sid = final_state["session_id"]
 
         result = {
             "session_id": sid,
+            "mode": effective_mode,
             "verdict": final_state.get("verdict"),
             "plan": {
                 "needed_agents": final_state.get("needed_agents", []),
@@ -120,6 +130,7 @@ async def query_endpoint(req: QueryRequest, sync: bool = False):
             "query": req.text,
             "session_id": session_id,
             "vessel_class": vessel_class,
+            "mode": effective_mode,
         },
     }
     sessions.store_event(session_id, run_started_envelope)
@@ -133,10 +144,11 @@ async def query_endpoint(req: QueryRequest, sync: bool = False):
             language=req.language,
             sessions=sessions,
             vessel_class=vessel_class,
+            mode=effective_mode,
         )
     )
 
-    return {"session_id": session_id, "verdict": None}
+    return {"session_id": session_id, "mode": effective_mode, "verdict": None}
 
 
 

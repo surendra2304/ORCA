@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     MODEL_GROQ: str = "openai/gpt-oss-120b"
     MOCK_MODE: bool = True
     LLM_TIMEOUT_S: float = 30.0
+    HTTP_TIMEOUT_S: float = 10.0
+    HTTP_RETRIES: int = 1
+    CACHE_TTL_S: int = 900
+    STALE_MAX_AGE_S: int = 21600
+    GEOCODE_TTL_S: int = 86400
+    LIGHTNING_MODERATE_JKG: float = 1.0
+    LIGHTNING_HIGH_JKG: float = 20.0
     APP_NAME: str = "ORCA"
     VERSION: str = "0.1.0"
 

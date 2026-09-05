@@ -7,6 +7,7 @@ class ORCAState(TypedDict):
     language: str                    # "en" default; Phase 7 adds real multilingual
     session_id: str
     vessel_class: str                # e.g. "small_fishing_boat"
+    mode: str                        # "mock" | "real"
     safety_relevant: bool            # True if query involves sea safety/trip feasibility
     verdict: Optional[Dict[str, Any]]# Deterministic safety rule engine verdict dict or None
     entities: Dict[str, Any]         # {lat, lon, location_name, date_hint}
