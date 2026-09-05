@@ -12,9 +12,9 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Chosen active Groq chat model: llama-3.3-70b-versatile
+# Chosen active Groq chat model: openai/gpt-oss-120b
 # Verified active on Groq Cloud supporting high-throughput production chat completions.
-ACTIVE_GROQ_MODEL = "llama-3.3-70b-versatile"
+ACTIVE_GROQ_MODEL = "openai/gpt-oss-120b"
 
 
 class LLMAvailabilityError(Exception):

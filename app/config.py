@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
     MODEL_GEMINI: str = "gemini-2.5-flash"
-    # Chosen active Groq chat model: llama-3.3-70b-versatile
-    MODEL_GROQ: str = "llama-3.3-70b-versatile"
+    # Chosen active Groq chat model: openai/gpt-oss-120b
+    MODEL_GROQ: str = "openai/gpt-oss-120b"
     MOCK_MODE: bool = True
     LLM_TIMEOUT_S: float = 30.0
     APP_NAME: str = "ORCA"

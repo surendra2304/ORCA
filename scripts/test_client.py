@@ -3,6 +3,9 @@ import json
 import sys
 import httpx
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 DEFAULT_QUERY = "Is it safe to fish near Visakhapatnam tomorrow?"
 SERVER_URL = "http://127.0.0.1:8000/query"
 
