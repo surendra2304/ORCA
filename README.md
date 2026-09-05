@@ -8,7 +8,7 @@ ORCA is an agentic AI marine decision-support backend tailored for Indian Ocean 
 |---|---|---|
 | **Phase 0** | **Foundation, FastAPI Health, & Provider-Agnostic LLM Layer** | **Completed** |
 | **Phase 1** | **Reasoning Core: LangGraph StateGraph, 6 Mock Agents, & POST /query** | **Completed** |
-| Phase 2 | Real-time Server-Sent Events (SSE) Streaming & Trace Events | Planned |
+| **Phase 2** | **Real-time Server-Sent Events (SSE) Streaming & Trace Events** | **Completed** |
 | Phase 3 | Real Data Ingestion Integrations (INCOIS, IMD, MOSDAC) | Planned |
 | Phase 4 | Multilingual Localization & Translation Layer | Planned |
 | Phase 5 | Geospatial Visualizations & Map Data Layer | Planned |
@@ -50,14 +50,32 @@ Check health status in your browser or terminal:
 curl http://127.0.0.1:8000/health
 ```
 
-### 5. Run the Reasoning Query Client (Phase 1)
-Run the synchronous multi-agent query CLI client:
+### 5. Run the Live SSE Streaming Query Client (Phase 2)
+Run the real-time SSE streaming CLI client:
 ```bash
 # Default query ("Is it safe to fish near Visakhapatnam tomorrow?")
 uv run python scripts/test_client.py
 
 # Custom query
 uv run python scripts/test_client.py "Check ocean currents and PFZ zones near Kakinada"
+```
+
+To stream directly with cURL or another HTTP client:
+```bash
+# 1. Start background reasoning task
+curl -X POST http://127.0.0.1:8000/query \
+     -H "Content-Type: application/json" \
+     -d '{"text": "Is it safe to fish near Visakhapatnam tomorrow?"}'
+
+# 2. Connect to live SSE stream (or replay past completed runs)
+curl.exe -N http://127.0.0.1:8000/stream/<session_id>
+```
+
+For synchronous execution (Phase 1 fallback):
+```bash
+curl -X POST "http://127.0.0.1:8000/query?sync=true" \
+     -H "Content-Type: application/json" \
+     -d '{"text": "Is it safe to fish near Visakhapatnam tomorrow?"}'
 ```
 
 ### 6. Run Unit Tests
