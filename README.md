@@ -7,14 +7,13 @@ ORCA is an agentic AI marine decision-support backend tailored for Indian Ocean 
 | Phase | Description | Status |
 |---|---|---|
 | **Phase 0** | **Foundation, FastAPI Health, & Provider-Agnostic LLM Layer** | **Completed** |
-| Phase 1 | Marine & Weather Ingestion Integrations (INCOIS, IMD, MOSDAC) | Planned |
-| Phase 2 | LangGraph Orchestration & Dynamic Planner Graph | Planned |
-| Phase 3 | Multi-Agent Execution (PFZ, Hazard, Satellite, Ocean, Weather) | Planned |
+| **Phase 1** | **Reasoning Core: LangGraph StateGraph, 6 Mock Agents, & POST /query** | **Completed** |
+| Phase 2 | Real-time Server-Sent Events (SSE) Streaming & Trace Events | Planned |
+| Phase 3 | Real Data Ingestion Integrations (INCOIS, IMD, MOSDAC) | Planned |
 | Phase 4 | Multilingual Localization & Translation Layer | Planned |
-| Phase 5 | Real-time SSE Streaming & WebSocket Events | Planned |
-| Phase 6 | Geospatial Visualizations & Map Data Layer | Planned |
-| Phase 7 | Persistent Knowledge Store & History | Planned |
-| Phase 8 | Production Hardening, Observability, & Evaluation | Planned |
+| Phase 5 | Geospatial Visualizations & Map Data Layer | Planned |
+| Phase 6 | Persistent Knowledge Store & History | Planned |
+| Phase 7 | Production Hardening, Observability, & Evaluation | Planned |
 
 ---
 
@@ -51,15 +50,18 @@ Check health status in your browser or terminal:
 curl http://127.0.0.1:8000/health
 ```
 
-### 5. Run the Smoke Test
-Verify the LLM layer using the smoke CLI script:
+### 5. Run the Reasoning Query Client (Phase 1)
+Run the synchronous multi-agent query CLI client:
 ```bash
-# Default prompt
-uv run python scripts/smoke_llm.py
+# Default query ("Is it safe to fish near Visakhapatnam tomorrow?")
+uv run python scripts/test_client.py
 
-# Custom prompt
-uv run python scripts/smoke_llm.py "Provide a 1-sentence maritime advisory for the Bay of Bengal"
+# Custom query
+uv run python scripts/test_client.py "Check ocean currents and PFZ zones near Kakinada"
+```
 
-# Structured JSON test
-uv run python scripts/smoke_llm.py --json
+### 6. Run Unit Tests
+Verify the planner validator rules and geospatial haversine math:
+```bash
+uv run pytest -q
 ```
