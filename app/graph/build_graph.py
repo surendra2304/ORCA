@@ -7,19 +7,30 @@ from langgraph.graph import END, START, StateGraph
 from app.graph.aggregator import aggregator_node
 from app.graph.executor import executor_node
 from app.graph.planner import planner_node
-from app.graph.state import ORCAState, create_event
+from app.graph.state import ORCAState
+from app.graph.trace import TraceCollector
 
 
-def build_graph():
+def build_graph(collector: TraceCollector):
     """
     Constructs and compiles the ORCA reasoning StateGraph:
     START -> planner -> executor -> aggregator -> END.
+    Node functions close over the per-run TraceCollector instance.
     """
     builder = StateGraph(ORCAState)
 
-    builder.add_node("planner", planner_node)
-    builder.add_node("executor", executor_node)
-    builder.add_node("aggregator", aggregator_node)
+    async def _planner_node(state: ORCAState) -> Dict[str, Any]:
+        return await planner_node(state, collector)
+
+    async def _executor_node(state: ORCAState) -> Dict[str, Any]:
+        return await executor_node(state, collector)
+
+    async def _aggregator_node(state: ORCAState) -> Dict[str, Any]:
+        return await aggregator_node(state, collector)
+
+    builder.add_node("planner", _planner_node)
+    builder.add_node("executor", _executor_node)
+    builder.add_node("aggregator", _aggregator_node)
 
     builder.add_edge(START, "planner")
     builder.add_edge("planner", "executor")
@@ -29,28 +40,19 @@ def build_graph():
     return builder.compile()
 
 
-_orca_graph = None
-
-
-def get_compiled_graph():
-    """Returns a singleton instance of the compiled graph."""
-    global _orca_graph
-    if _orca_graph is None:
-        _orca_graph = build_graph()
-    return _orca_graph
-
-
 async def run_graph(
     query: str,
     language: str = "en",
     session_id: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], int]:
     """
-    Helper function that initializes state, invokes the LangGraph workflow,
-    appends run_complete trace event, and returns (final_state, duration_ms).
+    Helper function that initializes state, invokes the LangGraph workflow
+    with a live TraceCollector, emits run_complete, and snapshots the collector
+    into final_state["trace"].
     """
     start_time = time.perf_counter()
     sid = session_id or str(uuid.uuid4())
+    collector = TraceCollector()
 
     initial_state: ORCAState = {
         "query": query,
@@ -64,7 +66,7 @@ async def run_graph(
         "trace": [],
     }
 
-    graph = get_compiled_graph()
+    graph = build_graph(collector)
     final_state = await graph.ainvoke(initial_state)
 
     duration_ms = int((time.perf_counter() - start_time) * 1000)
@@ -74,18 +76,18 @@ async def run_graph(
     agents_run = [a for a in needed if a in outputs]
     agents_failed = [a for a in needed if a not in outputs]
 
-    complete_event = create_event(
+    # Emit run_complete via the collector
+    await collector.emit(
         "run_complete",
-        data={
+        None,
+        {
             "duration_ms": duration_ms,
             "agents_run": agents_run,
             "agents_failed": agents_failed,
         },
     )
 
-    if "trace" in final_state:
-        final_state["trace"].append(complete_event)
-    else:
-        final_state["trace"] = [complete_event]
+    # Attach the full chronological trace snapshot to final_state
+    final_state["trace"] = collector.snapshot()
 
     return final_state, duration_ms

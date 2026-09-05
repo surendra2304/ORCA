@@ -1,7 +1,8 @@
 import logging
 from typing import Any, Dict, List, Tuple
 
-from app.graph.state import ORCAState, create_event
+from app.graph.state import ORCAState
+from app.graph.trace import TraceCollector
 from app.llm.client import call_llm_json
 
 logger = logging.getLogger(__name__)
@@ -140,18 +141,17 @@ def validate_plan(payload: Any) -> Tuple[bool, List[str]]:
     return len(errors) == 0, errors
 
 
-async def planner_node(state: ORCAState) -> Dict[str, Any]:
+async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str, Any]:
     """
     Planner LangGraph node.
-    Emits run_started and plan_created events.
-    Returns state updates for needed_agents, execution_plan, entities, and trace.
+    Emits run_started and plan_created live via TraceCollector.
+    Returns state updates for needed_agents, execution_plan, and entities.
     """
     query = state.get("query", "")
     session_id = state.get("session_id", "")
 
-    new_events = [
-        create_event("run_started", data={"query": query, "session_id": session_id}),
-    ]
+    # Emit run_started immediately
+    await collector.emit("run_started", None, {"query": query, "session_id": session_id})
 
     prompt = f"User Query: {query}\nProvide the needed agents, execution plan, and entities."
 
@@ -194,20 +194,19 @@ async def planner_node(state: ORCAState) -> Dict[str, Any]:
     execution_plan = final_plan["execution_plan"]
     entities = final_plan["entities"]
 
-    new_events.append(
-        create_event(
-            "plan_created",
-            data={
-                "needed_agents": needed_agents,
-                "execution_plan": execution_plan,
-                "entities": entities,
-            },
-        )
+    # Emit plan_created immediately
+    await collector.emit(
+        "plan_created",
+        None,
+        {
+            "needed_agents": needed_agents,
+            "execution_plan": execution_plan,
+            "entities": entities,
+        },
     )
 
     return {
         "needed_agents": needed_agents,
         "execution_plan": execution_plan,
         "entities": entities,
-        "trace": new_events,
     }

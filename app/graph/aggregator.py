@@ -2,7 +2,8 @@ import json
 import logging
 from typing import Any, Dict
 
-from app.graph.state import ORCAState, create_event
+from app.graph.state import ORCAState
+from app.graph.trace import TraceCollector
 from app.llm.client import call_llm
 
 logger = logging.getLogger(__name__)
@@ -14,11 +15,11 @@ AGGREGATOR_SYSTEM_TEMPLATE = (
 )
 
 
-async def aggregator_node(state: ORCAState) -> Dict[str, Any]:
+async def aggregator_node(state: ORCAState, collector: TraceCollector) -> Dict[str, Any]:
     """
     Aggregator LangGraph node.
     Synthesizes a factual, concise natural-language response based on agent outputs.
-    Emits the 'answer' event and stores the result in final_answer.
+    Emits the 'answer' event live via TraceCollector and stores the result in final_answer.
     """
     query = state.get("query", "")
     language = state.get("language", "en")
@@ -40,9 +41,8 @@ async def aggregator_node(state: ORCAState) -> Dict[str, Any]:
             f"Raw agent outputs summary: {list(agent_outputs.keys())} completed."
         )
 
-    answer_event = create_event("answer", data={"text": final_answer})
+    await collector.emit("answer", None, {"text": final_answer})
 
     return {
         "final_answer": final_answer,
-        "trace": [answer_event],
     }
