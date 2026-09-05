@@ -14,6 +14,9 @@ AGGREGATOR_SYSTEM_TEMPLATE = (
     "(GO/CAUTION/NO_GO/UNKNOWN) and explain it using ONLY the violations/cautions/reason provided. "
     "You are forbidden from upgrading or downgrading the verdict. If the verdict is UNKNOWN say data is "
     "insufficient and point to official IMD/INCOIS advisories. "
+    "When geospatial data shows restricted.inside=true, name the zone and say entry is prohibited. "
+    "When eez.inside=false, note the position is outside Indian waters. "
+    "When pfz zones exist, state the nearest zone's distance and bearing. Never invent coordinates. "
     "Be concise (<=130 words), factual, and respond in language code {language}. "
     "Never invent numbers not present in the data."
 )

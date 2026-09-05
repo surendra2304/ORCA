@@ -49,7 +49,7 @@ class MockAgent:
                 raise RuntimeError(f"Forced agent failure via ORCA_FORCE_AGENT_FAILURE for {self.name}")
 
             payload = await self.execute(state)
-            if state.get("mode") == "real" and self.name not in ("weather", "ocean"):
+            if state.get("mode") == "real" and self.name not in ("weather", "ocean", "pfz", "geospatial"):
                 src = payload.get("source", f"mock:{self.name}")
                 if not src.endswith(":mock"):
                     payload["source"] = f"{src}:mock"
@@ -61,7 +61,7 @@ class MockAgent:
             status = "error"
             summary = f"Agent execution failed: {exc}"
             source = f"mock:{self.name}"
-            if state.get("mode") == "real" and self.name not in ("weather", "ocean"):
+            if state.get("mode") == "real" and self.name not in ("weather", "ocean", "pfz", "geospatial"):
                 source = f"{source}:mock"
             payload = {"status": "error", "summary": summary, "source": source}
 

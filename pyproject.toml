@@ -19,6 +19,7 @@ dependencies = [
     "pytest>=9.1.1",
     "python-dotenv>=1.2.3",
     "pyyaml>=6.0.3",
+    "shapely>=2.1.2",
     "sse-starlette>=3.4.10",
     "uvicorn>=0.52.4",
 ]

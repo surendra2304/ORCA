@@ -266,3 +266,24 @@ def test_validate_plan_safety_relevant_default():
     is_valid, errors = validate_plan(payload_false)
     assert is_valid is True
     assert payload_false["safety_relevant"] is False
+
+
+def test_verdict_input_sources_provenance(rules):
+    """When input_sources is passed to evaluate_safety, verdict includes input_sources."""
+    vc = "small_fishing_boat"
+    obs = {
+        "wave_height_m": 1.5,
+        "wind_knots": 10.0,
+        "gusts_knots": 15.0,
+        "lightning_risk": "low",
+    }
+    sources = {
+        "weather": "open-meteo:forecast",
+        "ocean": "open-meteo:marine",
+        "hazard": "mock:IMD+INCOIS",
+    }
+    res = evaluate_safety(obs, vc, rules, input_sources=sources)
+    assert res["verdict"] == "GO"
+    assert "input_sources" in res
+    assert res["input_sources"] == sources
+

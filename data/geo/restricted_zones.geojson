@@ -1,0 +1,77 @@
+{
+  "type": "FeatureCollection",
+  "meta": {
+    "provenance": "Demonstration restricted zones based on Indian coastal naval and ecological areas",
+    "units": "EPSG:4326"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Visakhapatnam Naval Exclusion Area",
+        "category": "military",
+        "restriction": "Restricted military naval operations zone. Civilian entry and commercial fishing strictly prohibited."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [83.3655, 17.6900],
+            [83.3554, 17.7260],
+            [83.3278, 17.7524],
+            [83.2900, 17.7620],
+            [83.2523, 17.7524],
+            [83.2246, 17.7260],
+            [83.2145, 17.6900],
+            [83.2246, 17.6540],
+            [83.2523, 17.6276],
+            [83.2900, 17.6180],
+            [83.3278, 17.6276],
+            [83.3554, 17.6540],
+            [83.3655, 17.6900]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gahirmatha Marine Sanctuary",
+        "category": "ecological",
+        "restriction": "Olive Ridley sea turtle nesting sanctuary. Mechanized fishing prohibited November to May."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [86.80, 20.40],
+            [87.20, 20.40],
+            [87.20, 20.80],
+            [86.80, 20.80],
+            [86.80, 20.40]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "KG-Basin Offshore Petroleum Zone",
+        "category": "industrial",
+        "restriction": "Offshore drilling rig security perimeter. 500m safety zone around oil and gas platforms."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [81.85, 15.15],
+            [82.15, 15.15],
+            [82.15, 15.45],
+            [81.85, 15.45],
+            [81.85, 15.15]
+          ]
+        ]
+      }
+    }
+  ]
+}

@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     GEOCODE_TTL_S: int = 86400
     LIGHTNING_MODERATE_JKG: float = 1.0
     LIGHTNING_HIGH_JKG: float = 20.0
+    INCOIS_API_KEY: str = ""
+    INCOIS_PFZ_BASE_URL: str = ""
+    PFZ_ADVISORY_DIR: str = "data/pfz_advisories"
+    GEO_DATA_DIR: str = "data/geo"
     APP_NAME: str = "ORCA"
     VERSION: str = "0.1.0"
 

@@ -60,6 +60,7 @@ def evaluate_safety(
     observations: Dict[str, Any],
     vessel_class: str,
     rules: Dict[str, Any],
+    input_sources: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """
     Pure, deterministic evaluation function.
@@ -68,7 +69,7 @@ def evaluate_safety(
     """
     vessel_classes = rules.get("vessel_classes", {})
     if vessel_class not in vessel_classes:
-        return {
+        res = {
             "verdict": "UNKNOWN",
             "vessel_class": vessel_class,
             "rules_version": rules.get("version", "unknown"),
@@ -79,6 +80,9 @@ def evaluate_safety(
             "reason": f"unknown vessel class '{vessel_class}'; valid options: {list(vessel_classes.keys())}",
             "evaluated_at": utc_iso_now(),
         }
+        if input_sources is not None:
+            res["input_sources"] = input_sources
+        return res
 
     vessel_rules = vessel_classes[vessel_class]
     universal = rules.get("universal", {})
@@ -267,7 +271,7 @@ def evaluate_safety(
         verdict = "GO"
         reason = f"GO: all parameters within safe operational limits for {vessel_class}"
 
-    return {
+    result = {
         "verdict": verdict,
         "vessel_class": vessel_class,
         "rules_version": rules.get("version", "3.0.0"),
@@ -278,3 +282,6 @@ def evaluate_safety(
         "reason": reason,
         "evaluated_at": utc_iso_now(),
     }
+    if input_sources is not None:
+        result["input_sources"] = input_sources
+    return result

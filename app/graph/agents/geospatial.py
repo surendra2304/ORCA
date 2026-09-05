@@ -1,111 +1,238 @@
-import math
-from typing import Any, Dict, Optional, Tuple
+import json
+import logging
+import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from app.config import settings
 from app.graph.agents.base import MockAgent
 from app.graph.state import ORCAState
+from app.graph.trace import TraceCollector
+from app.tools.geo import (
+    bearing_deg,
+    bearing_deg as initial_bearing,
+    distance_to_polygon_km,
+    haversine_km,
+    haversine_km as haversine_distance,
+    nearest_zone,
+    point_in_polygon,
+)
 
-EARTH_RADIUS_KM = 6371.0
-KAKINADA_PORT = [16.98, 82.25]
-DEFAULT_PFZ_CENTER = [16.5, 82.5]
+logger = logging.getLogger(__name__)
 
-KNOWN_COASTAL_COORDS = {
-    "visakhapatnam": (17.6868, 83.2185),
-    "vizag": (17.6868, 83.2185),
-    "kakinada": (16.9891, 82.2475),
-    "machilipatnam": (16.1875, 81.1389),
-    "chennai": (13.0827, 80.2707),
-    "paradip": (20.3164, 86.6114),
-}
+# Cached geographic data
+_GEO_CACHE: Dict[str, Any] = {}
 
 
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+def load_geodata() -> Tuple[List[List[List[float]]], List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
-    Computes great-circle distance between two points on Earth in kilometers
-    using the Haversine formula.
+    Loads and caches EEZ polygons, restricted zones, and ports from GEO_DATA_DIR.
+    Converts GeoJSON coordinates [lon, lat] into [lat, lon] rings.
     """
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    delta_phi = math.radians(lat2 - lat1)
-    delta_lambda = math.radians(lon2 - lon1)
+    global _GEO_CACHE
+    if "loaded" in _GEO_CACHE:
+        return _GEO_CACHE["eez"], _GEO_CACHE["restricted"], _GEO_CACHE["ports"]
 
-    a = (
-        math.sin(delta_phi / 2.0) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
-    )
-    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
-    return EARTH_RADIUS_KM * c
+    geo_dir = Path(settings.GEO_DATA_DIR)
+    eez_file = geo_dir / "india_eez_simplified.geojson"
+    restricted_file = geo_dir / "restricted_zones.geojson"
+    ports_file = geo_dir / "ports.json"
 
+    # 1. Load EEZ
+    eez_polygons: List[List[List[float]]] = []
+    if eez_file.exists():
+        try:
+            with open(eez_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                features = data.get("features", [])
+                for feat in features:
+                    geom = feat.get("geometry", {})
+                    gtype = geom.get("type")
+                    coords = geom.get("coordinates", [])
+                    if gtype == "Polygon" and coords:
+                        ring = coords[0]
+                        eez_polygons.append([[float(c[1]), float(c[0])] for c in ring])
+                    elif gtype == "MultiPolygon" and coords:
+                        for poly in coords:
+                            if poly:
+                                ring = poly[0]
+                                eez_polygons.append([[float(c[1]), float(c[0])] for c in ring])
+        except Exception as exc:
+            logger.warning("Error loading EEZ geojson '%s': %s", eez_file, exc)
 
-def initial_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """
-    Computes initial compass bearing from point 1 to point 2 in degrees (0..360).
-    """
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    delta_lambda = math.radians(lon2 - lon1)
+    # 2. Load Restricted Zones
+    restricted_zones: List[Dict[str, Any]] = []
+    if restricted_file.exists():
+        try:
+            with open(restricted_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                features = data.get("features", [])
+                for feat in features:
+                    props = feat.get("properties", {})
+                    geom = feat.get("geometry", {})
+                    coords = geom.get("coordinates", [])
+                    if coords:
+                        ring = coords[0]
+                        lat_lon_ring = [[float(c[1]), float(c[0])] for c in ring]
+                        restricted_zones.append({
+                            "name": props.get("name", "Restricted Area"),
+                            "category": props.get("category", "general"),
+                            "restriction": props.get("restriction", "Entry prohibited"),
+                            "polygon": lat_lon_ring,
+                        })
+        except Exception as exc:
+            logger.warning("Error loading restricted zones '%s': %s", restricted_file, exc)
 
-    y = math.sin(delta_lambda) * math.cos(phi2)
-    x = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(
-        delta_lambda
-    )
-    theta = math.atan2(y, x)
-    return (math.degrees(theta) + 360.0) % 360.0
+    # 3. Load Ports
+    ports: List[Dict[str, Any]] = []
+    if ports_file.exists():
+        try:
+            with open(ports_file, "r", encoding="utf-8") as f:
+                ports_data = json.load(f)
+                if isinstance(ports_data, list):
+                    ports = ports_data
+        except Exception as exc:
+            logger.warning("Error loading ports '%s': %s", ports_file, exc)
+
+    _GEO_CACHE["eez"] = eez_polygons
+    _GEO_CACHE["restricted"] = restricted_zones
+    _GEO_CACHE["ports"] = ports
+    _GEO_CACHE["loaded"] = True
+
+    return eez_polygons, restricted_zones, ports
 
 
 class GeospatialAgent(MockAgent):
     name = "geospatial"
-    description = "Navigational calculations computing real distances and bearings from user to PFZ and ports."
+    description = "Navigational calculations computing real distances and bearings to PFZ zones, ports, EEZ, and restricted areas."
 
     async def execute(self, state: ORCAState) -> Dict[str, Any]:
         entities = state.get("entities") or {}
         user_lat = entities.get("lat")
         user_lon = entities.get("lon")
 
-        # If lat/lon are missing, attempt lookup from location_name or user query
-        if user_lat is None or user_lon is None:
-            loc_name = (entities.get("location_name") or "").lower()
-            query_text = (state.get("query") or "").lower()
-            search_text = f"{loc_name} {query_text}"
-            for key, coords in KNOWN_COASTAL_COORDS.items():
-                if key in search_text:
-                    user_lat, user_lon = coords
-                    break
-
-        if user_lat is None or user_lon is None:
+        # Fallback for queries with no coords
+        if user_lat is None or user_lon is None or not isinstance(user_lat, (int, float)) or not isinstance(user_lon, (int, float)):
             return {
-                "source": "mock:geospatial",
+                "source": "orca:geospatial",
                 "user": None,
+                "pfz": None,
+                "ports": None,
+                "eez": {
+                    "inside": False,
+                    "nearest_boundary_km": None,
+                    "boundary_file": "india_eez_simplified.geojson",
+                },
+                "restricted": None,
                 "note": "no location in query",
             }
 
-        # Retrieve PFZ zone center from pfz agent output (if available)
-        pfz_output = (state.get("agent_outputs") or {}).get("pfz") or {}
-        pfz_center = DEFAULT_PFZ_CENTER
-        zones = pfz_output.get("zones")
-        if isinstance(zones, list) and len(zones) > 0 and "center" in zones[0]:
-            candidate = zones[0]["center"]
-            if isinstance(candidate, (list, tuple)) and len(candidate) == 2:
-                pfz_center = [float(candidate[0]), float(candidate[1])]
+        lat_f = float(user_lat)
+        lon_f = float(user_lon)
+        user_coords = (lat_f, lon_f)
 
-        dist_to_pfz = haversine_distance(user_lat, user_lon, pfz_center[0], pfz_center[1])
-        bearing_to_pfz = initial_bearing(user_lat, user_lon, pfz_center[0], pfz_center[1])
-        dist_to_port = haversine_distance(user_lat, user_lon, KAKINADA_PORT[0], KAKINADA_PORT[1])
+        eez_polygons, restricted_zones, ports = load_geodata()
+
+        # 1. PFZ nearest zone over all zones
+        pfz_output = (state.get("agent_outputs") or {}).get("pfz") or {}
+        candidate_zones = pfz_output.get("zones", [])
+        zones_considered = len(candidate_zones) if isinstance(candidate_zones, list) else 0
+        nearest_pfz = nearest_zone(user_coords, candidate_zones) if zones_considered > 0 else None
+
+        pfz_dict: Dict[str, Any] = {
+            "zones_considered": zones_considered,
+            "nearest": nearest_pfz,
+        }
+
+        # 2. Nearest Port
+        nearest_port = None
+        if ports:
+            min_port_dist = float("inf")
+            best_port = None
+            for p in ports:
+                d = haversine_km(lat_f, lon_f, p.get("lat"), p.get("lon"))
+                if d is not None and d < min_port_dist:
+                    min_port_dist = d
+                    best_port = p
+            if best_port and min_port_dist != float("inf"):
+                nearest_port = {
+                    "name": best_port.get("name"),
+                    "distance_km": round(min_port_dist, 2),
+                }
+
+        # 3. EEZ Membership & Distance to Boundary
+        eez_inside = False
+        eez_boundary_dist = float("inf")
+        for poly in eez_polygons:
+            if point_in_polygon(lat_f, lon_f, poly):
+                eez_inside = True
+            d = distance_to_polygon_km(lat_f, lon_f, poly)
+            if d is not None and d < eez_boundary_dist:
+                eez_boundary_dist = d
+
+        eez_dict = {
+            "inside": eez_inside,
+            "nearest_boundary_km": round(eez_boundary_dist, 2) if eez_boundary_dist != float("inf") else None,
+            "boundary_file": "india_eez_simplified.geojson",
+        }
+
+        # 4. Restricted Zones Check
+        restr_inside = False
+        restr_zone_name: Optional[str] = None
+        min_restr_dist = float("inf")
+
+        for rz in restricted_zones:
+            poly = rz.get("polygon", [])
+            if point_in_polygon(lat_f, lon_f, poly):
+                restr_inside = True
+                restr_zone_name = rz.get("name")
+            d = distance_to_polygon_km(lat_f, lon_f, poly)
+            if d is not None and d < min_restr_dist:
+                min_restr_dist = d
+
+        restricted_dict = {
+            "inside": restr_inside,
+            "zone": restr_zone_name if restr_inside else None,
+            "nearest_km": 0.0 if restr_inside else (round(min_restr_dist, 2) if min_restr_dist != float("inf") else None),
+        }
 
         return {
-            "source": "mock:geospatial",
-            "user": {"lat": round(float(user_lat), 4), "lon": round(float(user_lon), 4)},
-            "dist_to_pfz_km": round(dist_to_pfz, 2),
-            "bearing_to_pfz_deg": round(bearing_to_pfz, 1),
-            "dist_to_port_km": round(dist_to_port, 2),
-            "port_name": "Kakinada Port",
+            "source": "orca:geospatial",
+            "user": {"lat": round(lat_f, 4), "lon": round(lon_f, 4)},
+            "pfz": pfz_dict,
+            "ports": {"nearest": nearest_port},
+            "eez": eez_dict,
+            "restricted": restricted_dict,
+            "note": None,
         }
 
     def summarize(self, payload: Dict[str, Any]) -> str:
         if payload.get("user") is None:
-            return "Geospatial calculation skipped: no location coordinates in query."
-        return (
-            f"Distance to PFZ: {payload.get('dist_to_pfz_km')} km (bearing {payload.get('bearing_to_pfz_deg')} deg); "
-            f"distance to port: {payload.get('dist_to_port_km')} km."
-        )
+            return "Geospatial calculation skipped: no location in query."
+
+        summary_parts = []
+        pfz_info = payload.get("pfz")
+        if pfz_info and pfz_info.get("nearest"):
+            nz = pfz_info["nearest"]
+            summary_parts.append(f"Nearest PFZ {nz.get('distance_km')}km (bearing {nz.get('bearing_deg')}°)")
+
+        ports_info = payload.get("ports", {})
+        if ports_info and ports_info.get("nearest"):
+            np = ports_info["nearest"]
+            summary_parts.append(f"nearest port {np.get('name')} ({np.get('distance_km')}km)")
+
+        restr_info = payload.get("restricted", {})
+        if restr_info:
+            if restr_info.get("inside"):
+                summary_parts.append(f"INSIDE restricted zone '{restr_info.get('zone')}'")
+            elif restr_info.get("nearest_km") is not None:
+                summary_parts.append(f"nearest restricted zone {restr_info.get('nearest_km')}km")
+
+        eez_info = payload.get("eez", {})
+        if eez_info and not eez_info.get("inside"):
+            summary_parts.append("OUTSIDE Indian EEZ waters")
+
+        return "; ".join(summary_parts) + "." if summary_parts else "Geospatial calculations completed."
 
 
 agent = GeospatialAgent()

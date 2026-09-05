@@ -109,9 +109,18 @@ async def verdict_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             "hazard_alerts": hazard_alerts,
         }
 
+        # Provenance: assemble input_sources from consumed agents only
+        input_sources: Dict[str, str] = {}
+        if weather_data and "source" in weather_data:
+            input_sources["weather"] = weather_data["source"]
+        if ocean_data and "source" in ocean_data:
+            input_sources["ocean"] = ocean_data["source"]
+        if hazard_data and "source" in hazard_data:
+            input_sources["hazard"] = hazard_data["source"]
+
         # 3. Deterministic evaluation
         rules = load_rules()
-        verdict = evaluate_safety(observations, vessel_class, rules)
+        verdict = evaluate_safety(observations, vessel_class, rules, input_sources=input_sources)
 
         # 4. Emit verdict event live
         await collector.emit("verdict", None, verdict)
