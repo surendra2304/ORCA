@@ -1,5 +1,25 @@
-.venv
-__pycache__/
-*.pyc
+# Virtual environment
+.venv/
+env/
+venv/
+
+# Environment variables
 .env
+*.env
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
 .pytest_cache/
+.coverage
+htmlcov/
+
+# Build artifacts & IDE
+dist/
+build/
+*.egg-info/
+.idea/
+.vscode/
+*.swp
+*.swo
