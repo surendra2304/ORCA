@@ -9,12 +9,13 @@ from app.graph.executor import executor_node
 from app.graph.planner import planner_node
 from app.graph.state import ORCAState
 from app.graph.trace import TraceCollector
+from app.graph.verdict import verdict_node
 
 
 def build_graph(collector: TraceCollector):
     """
     Constructs and compiles the ORCA reasoning StateGraph:
-    START -> planner -> executor -> aggregator -> END.
+    START -> planner -> executor -> verdict -> aggregator -> END.
     Node functions close over the per-run TraceCollector instance.
     """
     builder = StateGraph(ORCAState)
@@ -25,16 +26,21 @@ def build_graph(collector: TraceCollector):
     async def _executor_node(state: ORCAState) -> Dict[str, Any]:
         return await executor_node(state, collector)
 
+    async def _verdict_node(state: ORCAState) -> Dict[str, Any]:
+        return await verdict_node(state, collector)
+
     async def _aggregator_node(state: ORCAState) -> Dict[str, Any]:
         return await aggregator_node(state, collector)
 
     builder.add_node("planner", _planner_node)
     builder.add_node("executor", _executor_node)
+    builder.add_node("verdict", _verdict_node)
     builder.add_node("aggregator", _aggregator_node)
 
     builder.add_edge(START, "planner")
     builder.add_edge("planner", "executor")
-    builder.add_edge("executor", "aggregator")
+    builder.add_edge("executor", "verdict")
+    builder.add_edge("verdict", "aggregator")
     builder.add_edge("aggregator", END)
 
     return builder.compile()
@@ -44,6 +50,7 @@ async def run_graph(
     query: str,
     language: str = "en",
     session_id: Optional[str] = None,
+    vessel_class: str = "small_fishing_boat",
 ) -> Tuple[Dict[str, Any], int]:
     """
     Helper function that initializes state, invokes the LangGraph workflow
@@ -58,6 +65,9 @@ async def run_graph(
         "query": query,
         "language": language or "en",
         "session_id": sid,
+        "vessel_class": vessel_class or "small_fishing_boat",
+        "safety_relevant": True,
+        "verdict": None,
         "entities": {"lat": None, "lon": None, "location_name": None, "date_hint": None},
         "needed_agents": [],
         "execution_plan": [],
@@ -91,3 +101,4 @@ async def run_graph(
     final_state["trace"] = collector.snapshot()
 
     return final_state, duration_ms
+

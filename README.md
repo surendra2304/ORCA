@@ -9,11 +9,11 @@ ORCA is an agentic AI marine decision-support backend tailored for Indian Ocean 
 | **Phase 0** | **Foundation, FastAPI Health, & Provider-Agnostic LLM Layer** | **Completed** |
 | **Phase 1** | **Reasoning Core: LangGraph StateGraph, 6 Mock Agents, & POST /query** | **Completed** |
 | **Phase 2** | **Real-time Server-Sent Events (SSE) Streaming & Trace Events** | **Completed** |
-| Phase 3 | Real Data Ingestion Integrations (INCOIS, IMD, MOSDAC) | Planned |
-| Phase 4 | Multilingual Localization & Translation Layer | Planned |
-| Phase 5 | Geospatial Visualizations & Map Data Layer | Planned |
-| Phase 6 | Persistent Knowledge Store & History | Planned |
-| Phase 7 | Production Hardening, Observability, & Evaluation | Planned |
+| **Phase 3** | **The Safety Brain: Deterministic YAML Rule Engine & Vessel Verdicts** | **Completed** |
+| Phase 4 | Real Data Ingestion Integrations (INCOIS, IMD, MOSDAC) | Planned |
+| Phase 5 | Multilingual Localization & Translation Layer | Planned |
+| Phase 6 | Geospatial Visualizations & Map Data Layer | Planned |
+| Phase 7 | Persistent Knowledge Store & History | Planned |
 
 ---
 

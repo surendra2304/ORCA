@@ -35,6 +35,11 @@ def main():
         help="Language code (default: 'en')",
     )
     parser.add_argument(
+        "--vessel",
+        default="small_fishing_boat",
+        help="Vessel class (default: 'small_fishing_boat')",
+    )
+    parser.add_argument(
         "--base-url",
         default=DEFAULT_BASE_URL,
         help=f"ORCA base URL (default: {DEFAULT_BASE_URL})",
@@ -46,9 +51,10 @@ def main():
     print("=" * 70)
     print("ORCA Reasoning Engine - Live SSE Streaming Client")
     print("=" * 70)
-    print(f"Query:    '{args.query}'")
-    print(f"Language: {args.lang}")
-    print(f"Base URL: {base_url}")
+    print(f"Query:        '{args.query}'")
+    print(f"Language:     {args.lang}")
+    print(f"Vessel Class: {args.vessel}")
+    print(f"Base URL:     {base_url}")
     print("-" * 70)
 
     # 1. Start query as background task
@@ -57,7 +63,11 @@ def main():
         with httpx.Client(timeout=10.0) as client:
             resp = client.post(
                 f"{base_url}/query",
-                json={"text": args.query, "language": args.lang},
+                json={
+                    "text": args.query,
+                    "language": args.lang,
+                    "vessel_class": args.vessel,
+                },
             )
             resp.raise_for_status()
             init_data = resp.json()
@@ -84,6 +94,7 @@ def main():
     stream_url = f"{base_url}/stream/{session_id}"
     event_count = 0
     final_advisory_text = None
+    final_verdict_data = None
 
     try:
         with httpx.Client(timeout=60.0) as client:
@@ -124,6 +135,11 @@ def main():
                                 summary = f"Agent {agent} started execution"
                             elif etype == "agent_result":
                                 summary = payload.get("summary", f"Agent {agent} finished")
+                            elif etype == "verdict":
+                                final_verdict_data = payload
+                                verdict_val = payload.get("verdict", "UNKNOWN")
+                                reason = payload.get("reason", "")
+                                summary = f"Verdict: [{verdict_val}] - {reason}"
                             elif etype == "final_answer":
                                 final_advisory_text = payload.get("text", "")
                                 summary = f"Final answer synthesized ({len(final_advisory_text)} chars)"
@@ -163,6 +179,20 @@ def main():
         sys.exit(1)
 
     total_wall_ms = int((time.perf_counter() - t0) * 1000)
+
+    if final_verdict_data:
+        print("\n" + "=" * 70)
+        print(f"--- DETERMINISTIC SAFETY VERDICT: {final_verdict_data.get('verdict')} ---")
+        print(f"Reason: {final_verdict_data.get('reason')}")
+        if final_verdict_data.get("violations"):
+            print("Violations:")
+            for v in final_verdict_data["violations"]:
+                print(f"  * {v['parameter']}: {v['value']} (limit: {v['stop']})")
+        if final_verdict_data.get("cautions"):
+            print("Cautions:")
+            for c in final_verdict_data["cautions"]:
+                print(f"  * {c['parameter']}: {c['value']} (caution: {c['caution']})")
+        print("=" * 70)
 
     if final_advisory_text:
         print("\n" + "=" * 70)

@@ -10,24 +10,31 @@ logger = logging.getLogger(__name__)
 
 AGGREGATOR_SYSTEM_TEMPLATE = (
     "You are ORCA, a marine advisory assistant. Answer the user's query using ONLY the JSON data provided. "
-    "Be concise (<=120 words), factual, and respond in language code {language}- even though some data is from "
-    "mock sources, answer naturally as if advising a fisherman/coastal user. Never invent numbers not present in the data."
+    "A deterministic rule engine has already computed a safety verdict. You MUST state it exactly "
+    "(GO/CAUTION/NO_GO/UNKNOWN) and explain it using ONLY the violations/cautions/reason provided. "
+    "You are forbidden from upgrading or downgrading the verdict. If the verdict is UNKNOWN say data is "
+    "insufficient and point to official IMD/INCOIS advisories. "
+    "Be concise (<=130 words), factual, and respond in language code {language}. "
+    "Never invent numbers not present in the data."
 )
 
 
 async def aggregator_node(state: ORCAState, collector: TraceCollector) -> Dict[str, Any]:
     """
     Aggregator LangGraph node.
-    Synthesizes a factual, concise natural-language response based on agent outputs.
+    Synthesizes a factual, concise natural-language response based on agent outputs and verdict.
     Emits the 'answer' event live via TraceCollector and stores the result in final_answer.
     """
     query = state.get("query", "")
     language = state.get("language", "en")
     agent_outputs = state.get("agent_outputs", {})
+    verdict = state.get("verdict")
 
     system_prompt = AGGREGATOR_SYSTEM_TEMPLATE.format(language=language)
     user_message = (
         f"User Query: {query}\n\n"
+        f"Deterministic Safety Verdict:\n"
+        f"{json.dumps(verdict, indent=2)}\n\n"
         f"Data from Marine & Meteorological Agents:\n"
         f"{json.dumps(agent_outputs, indent=2)}"
     )

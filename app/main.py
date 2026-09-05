@@ -8,6 +8,7 @@ from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 import uvicorn
 
 from app.config import settings
+from app.core.rules import VESSEL_CLASSES
 from app.core.runner import run_graph_streaming, utc_iso_now
 from app.core.sessions import sessions
 from app.graph.build_graph import run_graph
@@ -23,6 +24,7 @@ past_runs: Dict[str, Dict[str, Any]] = {}
 class QueryRequest(BaseModel):
     text: str = Field(..., description="User query text")
     language: str = Field("en", description="ISO 639-1 language code")
+    vessel_class: str = Field("small_fishing_boat", description="Vessel class for safety rules")
     sync: Optional[bool] = Field(None, description="Optional sync flag in body")
 
 
@@ -48,14 +50,26 @@ async def query_endpoint(req: QueryRequest, sync: bool = False):
     By default, starts the graph as a BACKGROUND task and returns {"session_id": ...} immediately (<300ms).
     If sync=True (via query param ?sync=true or body flag), executes synchronously and returns full result JSON.
     """
+    vessel_class = req.vessel_class or "small_fishing_boat"
+    if vessel_class not in VESSEL_CLASSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid vessel_class '{vessel_class}'. Valid options: {VESSEL_CLASSES}",
+        )
+
     is_sync = sync or bool(req.sync)
 
     if is_sync:
-        final_state, duration_ms = await run_graph(query=req.text, language=req.language)
+        final_state, duration_ms = await run_graph(
+            query=req.text,
+            language=req.language,
+            vessel_class=vessel_class,
+        )
         sid = final_state["session_id"]
 
         result = {
             "session_id": sid,
+            "verdict": final_state.get("verdict"),
             "plan": {
                 "needed_agents": final_state.get("needed_agents", []),
                 "execution_plan": final_state.get("execution_plan", []),
@@ -105,6 +119,7 @@ async def query_endpoint(req: QueryRequest, sync: bool = False):
         "payload": {
             "query": req.text,
             "session_id": session_id,
+            "vessel_class": vessel_class,
         },
     }
     sessions.store_event(session_id, run_started_envelope)
@@ -117,10 +132,12 @@ async def query_endpoint(req: QueryRequest, sync: bool = False):
             query=req.text,
             language=req.language,
             sessions=sessions,
+            vessel_class=vessel_class,
         )
     )
 
-    return {"session_id": session_id}
+    return {"session_id": session_id, "verdict": None}
+
 
 
 @app.get("/stream/{session_id}")

@@ -11,6 +11,7 @@ VALID_AGENTS = {"weather", "ocean", "pfz", "satellite", "geospatial", "hazard"}
 CANONICAL_AGENTS = ["weather", "ocean", "pfz", "satellite", "hazard", "geospatial"]
 
 FALLBACK_PLAN = {
+    "safety_relevant": True,
     "needed_agents": CANONICAL_AGENTS,
     "execution_plan": [
         ["weather", "ocean", "pfz", "satellite", "hazard"],
@@ -27,6 +28,11 @@ FALLBACK_PLAN = {
 PLANNER_SYSTEM_PROMPT = """You are ORCA Planner, an expert coordinator for marine reasoning in the Indian Ocean.
 Analyze the user query, determine the required agents, extract relevant entities, and formulate an execution plan.
 
+Safety Determination:
+- safety_relevant: boolean flag.
+  * true when the query asks about going to sea, safety, trip feasibility, or weather/ocean conditions ("Is it safe to fish?", "Can I sail tomorrow?").
+  * false when the query asks about locations, navigation distances, coordinates, or finding PFZ zones without asking about safety or weather (e.g., "Where is the nearest PFZ near Kakinada?", "What is the distance to Chennai port?").
+
 Available Agents:
 - weather: Meteorological forecast, wind speed, gusts, precipitation, lightning risk.
 - ocean: Ocean state forecast, wave heights, swell, sea surface temperature, tides, and currents.
@@ -40,6 +46,7 @@ Dependency Rule:
 
 You MUST return ONLY valid JSON matching this exact structure:
 {
+  "safety_relevant": true,
   "needed_agents": ["weather", "ocean", "pfz", "satellite", "geospatial", "hazard"],
   "execution_plan": [["weather", "ocean", "pfz", "satellite", "hazard"], ["geospatial"]],
   "entities": {
@@ -138,6 +145,11 @@ def validate_plan(payload: Any) -> Tuple[bool, List[str]]:
             if val is not None and not isinstance(val, str):
                 errors.append(f"Entity '{text_key}' must be a string or null; got {repr(val)}.")
 
+    # 5. safety_relevant validation & fail-safe default
+    sr = payload.get("safety_relevant")
+    if not isinstance(sr, bool):
+        payload["safety_relevant"] = True
+
     return len(errors) == 0, errors
 
 
@@ -145,7 +157,7 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
     """
     Planner LangGraph node.
     Emits run_started and plan_created live via TraceCollector.
-    Returns state updates for needed_agents, execution_plan, and entities.
+    Returns state updates for safety_relevant, needed_agents, execution_plan, and entities.
     """
     query = state.get("query", "")
     session_id = state.get("session_id", "")
@@ -153,7 +165,7 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
     # Emit run_started immediately
     await collector.emit("run_started", None, {"query": query, "session_id": session_id})
 
-    prompt = f"User Query: {query}\nProvide the needed agents, execution plan, and entities."
+    prompt = f"User Query: {query}\nProvide the safety_relevant flag, needed agents, execution plan, and entities."
 
     # Attempt 1
     raw_plan = None
@@ -186,10 +198,11 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             "Planner attempt 2 also failed validation (%s). Using fallback plan.",
             errors,
         )
-        final_plan = FALLBACK_PLAN
+        final_plan = dict(FALLBACK_PLAN)
     else:
         final_plan = raw_plan
 
+    safety_relevant = final_plan.get("safety_relevant", True)
     needed_agents = final_plan["needed_agents"]
     execution_plan = final_plan["execution_plan"]
     entities = final_plan["entities"]
@@ -199,6 +212,7 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
         "plan_created",
         None,
         {
+            "safety_relevant": safety_relevant,
             "needed_agents": needed_agents,
             "execution_plan": execution_plan,
             "entities": entities,
@@ -206,7 +220,9 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
     )
 
     return {
+        "safety_relevant": safety_relevant,
         "needed_agents": needed_agents,
         "execution_plan": execution_plan,
         "entities": entities,
     }
+

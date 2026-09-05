@@ -134,3 +134,38 @@ def test_haversine_distance():
     # Bearing test
     bearing = initial_bearing(vizag[0], vizag[1], kakinada[0], kakinada[1])
     assert 0.0 <= bearing <= 360.0
+
+
+def test_safety_relevant_field_validation():
+    # 1. When missing, defaults to True (fail-safe)
+    p1 = {
+        "needed_agents": ["weather"],
+        "execution_plan": [["weather"]],
+        "entities": {},
+    }
+    valid, errors = validate_plan(p1)
+    assert valid is True
+    assert p1.get("safety_relevant") is True
+
+    # 2. When non-bool (e.g. string), defaults to True (fail-safe)
+    p2 = {
+        "safety_relevant": "not_a_bool",
+        "needed_agents": ["weather"],
+        "execution_plan": [["weather"]],
+        "entities": {},
+    }
+    valid, errors = validate_plan(p2)
+    assert valid is True
+    assert p2.get("safety_relevant") is True
+
+    # 3. Explicit False is preserved
+    p3 = {
+        "safety_relevant": False,
+        "needed_agents": ["pfz"],
+        "execution_plan": [["pfz"]],
+        "entities": {},
+    }
+    valid, errors = validate_plan(p3)
+    assert valid is True
+    assert p3.get("safety_relevant") is False
+

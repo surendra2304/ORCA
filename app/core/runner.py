@@ -21,6 +21,7 @@ async def run_graph_streaming(
     query: str,
     language: str = "en",
     sessions: Optional[SessionManager] = None,
+    vessel_class: str = "small_fishing_boat",
 ) -> None:
     """
     Executes the ORCA reasoning graph as a streaming background task.
@@ -65,6 +66,9 @@ async def run_graph_streaming(
         "query": query,
         "language": language or "en",
         "session_id": session_id,
+        "vessel_class": vessel_class or "small_fishing_boat",
+        "safety_relevant": True,
+        "verdict": None,
         "entities": {"lat": None, "lon": None, "location_name": None, "date_hint": None},
         "needed_agents": [],
         "execution_plan": [],

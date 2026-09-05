@@ -47,19 +47,20 @@ async def _async_test_event_chronology():
     trace = final_state.get("trace", [])
 
     # (d) Macro order & exact length
-    # 1 run_started + 1 plan_created + 2*N agent events + 1 answer + 1 run_complete
-    expected_length = 1 + 1 + 2 * n_agents + 1 + 1
+    # 1 run_started + 1 plan_created + 2*N agent events + 1 verdict + 1 answer + 1 run_complete
+    expected_length = 1 + 1 + 2 * n_agents + 1 + 1 + 1
     assert (
         len(trace) == expected_length
     ), f"Expected {expected_length} events, got {len(trace)}. Trace: {[e['event'] for e in trace]}"
 
     assert trace[0]["event"] == "run_started", f"First event must be run_started, got {trace[0]['event']}"
     assert trace[1]["event"] == "plan_created", f"Second event must be plan_created, got {trace[1]['event']}"
+    assert trace[-3]["event"] == "verdict", f"Antepenultimate event must be verdict, got {trace[-3]['event']}"
     assert trace[-2]["event"] == "answer", f"Penultimate event must be answer, got {trace[-2]['event']}"
     assert trace[-1]["event"] == "run_complete", f"Final event must be run_complete, got {trace[-1]['event']}"
 
     # Middle events must all be agent events
-    middle_events = trace[2:-2]
+    middle_events = trace[2:-3]
     assert all(
         e["event"] in ("agent_started", "agent_result") for e in middle_events
     ), f"Middle events must be agent events: {middle_events}"

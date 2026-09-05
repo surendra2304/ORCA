@@ -1,0 +1,21 @@
+version: "3.0.0"
+vessel_classes:
+  small_fishing_boat:
+    label: "Small traditional boat / catamaran / canoe"
+    wave_height_m:  {caution: 2.0, stop: 2.5}
+    wind_knots:     {caution: 15,  stop: 20}
+    gusts_knots:    {caution: 22,  stop: 28}
+  motorized_fishing_vessel:
+    label: "Motorized fishing vessel"
+    wave_height_m:  {caution: 2.5, stop: 3.0}
+    wind_knots:     {caution: 18,  stop: 25}
+    gusts_knots:    {caution: 26,  stop: 32}
+  larger_vessel:
+    label: "Larger fishing vessel / mechanized boat"
+    wave_height_m:  {caution: 3.2, stop: 4.0}
+    wind_knots:     {caution: 25,  stop: 33}
+    gusts_knots:    {caution: 33,  stop: 40}
+universal:
+  lightning_risk:      {high: stop, moderate: caution}
+  hazard_alert_severity: {moderate: caution, high: stop, extreme: stop}
+  cyclone_alert: stop        # any cyclone alert -> stop, all classes

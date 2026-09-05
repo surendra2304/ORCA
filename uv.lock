@@ -694,6 +694,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pytest" },
     { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "sse-starlette" },
     { name = "uvicorn" },
 ]
@@ -710,6 +711,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.15.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "sse-starlette", specifier = ">=3.4.10" },
     { name = "uvicorn", specifier = ">=0.52.4" },
 ]
