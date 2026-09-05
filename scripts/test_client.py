@@ -42,8 +42,8 @@ def main():
     parser.add_argument(
         "--mode",
         choices=["mock", "real"],
-        default="real",
-        help="Execution mode (default: 'real')",
+        default=None,
+        help="Execution mode (default: server default from settings.MOCK_MODE)",
     )
     parser.add_argument(
         "--base-url",
@@ -60,22 +60,25 @@ def main():
     print(f"Query:        '{args.query}'")
     print(f"Language:     {args.lang}")
     print(f"Vessel Class: {args.vessel}")
-    print(f"Mode:         {args.mode}")
+    print(f"Mode:         {args.mode or 'default (mock)'}")
     print(f"Base URL:     {base_url}")
     print("-" * 70)
 
     # 1. Start query as background task
     t0 = time.perf_counter()
+    query_body = {
+        "text": args.query,
+        "language": args.lang,
+        "vessel_class": args.vessel,
+    }
+    if args.mode is not None:
+        query_body["mode"] = args.mode
+
     try:
         with httpx.Client(timeout=10.0) as client:
             resp = client.post(
                 f"{base_url}/query",
-                json={
-                    "text": args.query,
-                    "language": args.lang,
-                    "vessel_class": args.vessel,
-                    "mode": args.mode,
-                },
+                json=query_body,
             )
             resp.raise_for_status()
             init_data = resp.json()
