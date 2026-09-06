@@ -119,7 +119,7 @@ async def verdict_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             input_sources["weather"] = weather_data["source"]
         if ocean_data and "source" in ocean_data:
             input_sources["ocean"] = ocean_data["source"]
-        if hazard_data and "source" in hazard_data:
+        if hazard_data and hazard_data.get("alerts") and "source" in hazard_data:
             input_sources["hazard"] = hazard_data["source"]
         # input_sources gains "geospatial" ONLY when geofence was actually evaluated (user coords present)
         if (
