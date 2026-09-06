@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
-    MODEL_GEMINI: str = "gemini-2.5-flash"
+    MODEL_GEMINI: str = "gemini-3.6-flash"
     # Chosen active Groq chat model: openai/gpt-oss-120b
     MODEL_GROQ: str = "openai/gpt-oss-120b"
     MOCK_MODE: bool = True
