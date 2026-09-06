@@ -169,3 +169,41 @@ def test_safety_relevant_field_validation():
     assert valid is True
     assert p3.get("safety_relevant") is False
 
+
+def test_planner_language_and_entity_source_validation():
+    # Missing language defaults to 'en'
+    p1 = {
+        "needed_agents": ["weather"],
+        "execution_plan": [["weather"]],
+        "entities": {},
+    }
+    valid, errors = validate_plan(p1)
+    assert valid is True
+    assert p1.get("language") == "en"
+    assert p1.get("entity_source") == "query"
+
+    # Valid language (hi) and entity_source (inherited)
+    p2 = {
+        "language": "hi",
+        "entity_source": "inherited",
+        "needed_agents": ["weather"],
+        "execution_plan": [["weather"]],
+        "entities": {},
+    }
+    valid, errors = validate_plan(p2)
+    assert valid is True
+    assert p2.get("language") == "hi"
+    assert p2.get("entity_source") == "inherited"
+
+    # Invalid entity_source returns error
+    p3 = {
+        "language": "te",
+        "entity_source": "telepathic",
+        "needed_agents": ["weather"],
+        "execution_plan": [["weather"]],
+        "entities": {},
+    }
+    valid, errors = validate_plan(p3)
+    assert valid is False
+    assert any("entity_source" in err for err in errors)
+

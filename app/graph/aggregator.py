@@ -15,10 +15,12 @@ AGGREGATOR_SYSTEM_TEMPLATE = (
     "You are forbidden from upgrading or downgrading the verdict. If the verdict is UNKNOWN say data is "
     "insufficient and point to official IMD/INCOIS advisories. "
     "Geofence results are absolute: if the verdict reason mentions a restricted zone, name the zone and state entry is prohibited. "
-    "If it mentions EEZ boundary proximity or IMBL, state the distance and warn about interception/permit risks near international maritime boundaries. Never soften a NO-GO. "
+    "If the vessel is outside the Indian EEZ (eez.inside is false) or near the EEZ boundary or IMBL, explicitly state that the vessel is outside the Indian EEZ boundary and warn about interception/permit risks near international maritime boundaries. Never soften a NO-GO. "
     "When pfz zones exist, state the nearest zone's distance and bearing. Never invent coordinates. "
-    "Be concise (<=130 words), factual, and respond in language code {language}. "
-    "Never invent numbers not present in the data."
+    "Write the ENTIRE answer in {language} (use the native script of {language}: e.g., Devanagari for hi, Bengali for bn, Telugu for te, Tamil for ta). "
+    "Keep the verdict token (GO/CAUTION/NO_GO/UNKNOWN) UNTRANSLATED and verbatim — it is a machine field. "
+    "Numbers, distances, and zone names stay as-is. Only fall back to English if the language is completely unrecognizable, prefixing with '[en]'. "
+    "Be concise (<=130 words), factual, and never invent numbers not present in the data."
 )
 
 

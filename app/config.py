@@ -13,9 +13,8 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
-    MODEL_GEMINI: str = "gemini-3.6-flash"
-    # Chosen active Groq chat model: openai/gpt-oss-120b
-    MODEL_GROQ: str = "openai/gpt-oss-120b"
+    MODEL_GEMINI: str = "gemini-3.5-flash-lite"
+    MODEL_GROQ: str = "openai/gpt-oss-20b"
     MOCK_MODE: bool = True
     LLM_TIMEOUT_S: float = 30.0
     HTTP_TIMEOUT_S: float = 10.0
@@ -33,6 +32,9 @@ class Settings(BaseSettings):
     INCOIS_ALERTS_BASE_URL: str = ""  # set when INCOIS registration approves
     HAZARD_ADVISORY_DIR: str = "data/hazard_advisories"
     GEO_DATA_DIR: str = "data/geo"
+    MEMORY_TURNS: int = 10
+    RUNS_DIR: str = "runs"
+    SESSIONS_DIR: str = "sessions"
     APP_NAME: str = "ORCA"
     VERSION: str = "0.1.0"
 

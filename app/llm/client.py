@@ -32,7 +32,10 @@ async def _call_gemini(prompt: str, system: str | None = None, max_tokens: int =
     if not settings.gemini_configured:
         raise ValueError("GEMINI_API_KEY is not configured or empty")
 
-    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    client = genai.Client(
+        api_key=settings.GEMINI_API_KEY,
+        http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1)),
+    )
     config = types.GenerateContentConfig(
         system_instruction=system if system else None,
         max_output_tokens=max_tokens,

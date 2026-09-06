@@ -1,0 +1,270 @@
+[
+  {
+    "id": "g01",
+    "notes": "en safety Vizag mock small_boat -> verdict NO_GO, safety_relevant true, needed superset [weather, ocean], answer mentions NO_GO",
+    "turns": [
+      {
+        "query": "Is it safe to fish near Visakhapatnam tomorrow?",
+        "session_id": null,
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "safety_relevant": true,
+          "verdict": "NO_GO",
+          "needed_agents_superset": ["weather", "ocean"],
+          "answer_mentions_any": ["NO_GO"]
+        }
+      }
+    ]
+  },
+  {
+    "id": "g02",
+    "notes": "en pfz Kakinada -> safety_relevant false, verdict null, geospatial_after_pfz true, needed superset [pfz, geospatial]",
+    "turns": [
+      {
+        "query": "Where is the nearest PFZ near Kakinada?",
+        "session_id": null,
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "safety_relevant": false,
+          "verdict": null,
+          "geospatial_after_pfz": true,
+          "needed_agents_superset": ["pfz", "geospatial"]
+        }
+      }
+    ]
+  },
+  {
+    "id": "g03",
+    "notes": "hi safety Vizag -> language hi, Devanagari script regex, verdict NO_GO",
+    "turns": [
+      {
+        "query": "क्या कल सुबह विशाखापत्तनम के पास मछली पकड़ना सुरक्षित है?",
+        "session_id": null,
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "language": "hi",
+          "language_script_regex": "[\\u0900-\\u097F]",
+          "verdict": "NO_GO"
+        }
+      }
+    ]
+  },
+  {
+    "id": "g04",
+    "notes": "te safety Kakinada -> language te, Telugu script regex",
+    "turns": [
+      {
+        "query": "రేపు ఉదయం కాకినాడ సమీపంలో ఫిషింగ్ చెయ్యడం సురక్షితమేనా?",
+        "session_id": null,
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "language": "te",
+          "language_script_regex": "[\\u0C00-\\u0C7F]"
+        }
+      }
+    ]
+  },
+  {
+    "id": "g05",
+    "notes": "ta safety Chennai -> language ta",
+    "turns": [
+      {
+        "query": "நாளை காலை சென்னை அருகில் மீன் பிடிப்பது பாதுகாப்பானதா?",
+        "session_id": null,
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "language": "ta"
+        }
+      }
+    ]
+  },
+  {
+    "id": "g06",
+    "notes": "multi-turn inheritance en: turn1 sets location Kakinada, turn2 leaves at 4 AM -> entity_inherited true, safety verdict computed",
+    "turns": [
+      {
+        "query": "I will fish from Kakinada tomorrow. Is it safe?",
+        "session_id": "shared-g06",
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "safety_relevant": true
+        }
+      },
+      {
+        "query": "What if I leave at 4 AM instead?",
+        "session_id": "shared-g06",
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "entity_inherited": true,
+          "verdict_in": ["GO", "CAUTION", "NO_GO", "UNKNOWN"]
+        }
+      }
+    ]
+  },
+  {
+    "id": "g07",
+    "notes": "geofence naval zone [17.70, 83.30] -> NO_GO, answer mentions prohibited/restricted/naval",
+    "turns": [
+      {
+        "query": "I am at coordinates 17.70 N, 83.30 E — is it safe to navigate tomorrow?",
+        "session_id": null,
+        "mode": "real",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "verdict": "NO_GO",
+          "answer_mentions_any": ["naval", "prohibited", "restricted"]
+        }
+      }
+    ]
+  },
+  {
+    "id": "g08",
+    "notes": "inland Hyderabad -> verdict UNKNOWN",
+    "turns": [
+      {
+        "query": "Is it safe to fish in Hyderabad tomorrow?",
+        "session_id": null,
+        "mode": "real",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "verdict": "UNKNOWN"
+        }
+      }
+    ]
+  },
+  {
+    "id": "g09",
+    "notes": "EEZ outside [8.0, 90.0] -> verdict NO_GO (mock ocean 2.8m + outside EEZ), answer mentions EEZ/boundary/outside",
+    "turns": [
+      {
+        "query": "I am at coordinates 8.0 N, 90.0 E, what is my status?",
+        "session_id": null,
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "verdict": "NO_GO",
+          "answer_mentions_any": ["eez", "boundary", "outside"]
+        }
+      }
+    ]
+  },
+  {
+    "id": "g10",
+    "notes": "vessel class: same Vizag query motorized_fishing_vessel -> verdict CAUTION (wave 2.8: >=2.5 caution, <3.0 stop)",
+    "turns": [
+      {
+        "query": "Is it safe to fish near Visakhapatnam tomorrow?",
+        "session_id": null,
+        "mode": "mock",
+        "vessel_class": "motorized_fishing_vessel",
+        "expect": {
+          "verdict": "CAUTION"
+        }
+      }
+    ]
+  },
+  {
+    "id": "g11",
+    "notes": "invalid vessel_class 'yacht' -> http_status 400",
+    "turns": [
+      {
+        "query": "Is it safe to sail tomorrow?",
+        "session_id": null,
+        "mode": "mock",
+        "vessel_class": "yacht",
+        "expect": {
+          "http_status": 400
+        }
+      }
+    ]
+  },
+  {
+    "id": "g12",
+    "notes": "non-safety follow-up: turn1 pfz Kakinada, turn2 weather there -> entity_inherited true, safety_relevant false, needed superset [weather]",
+    "turns": [
+      {
+        "query": "Where is the nearest PFZ near Kakinada?",
+        "session_id": "shared-g12",
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "safety_relevant": false
+        }
+      },
+      {
+        "query": "What is the weather there?",
+        "session_id": "shared-g12",
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "entity_inherited": true,
+          "safety_relevant": false,
+          "needed_agents_superset": ["weather"]
+        }
+      }
+    ]
+  },
+  {
+    "id": "g13",
+    "notes": "hi follow-up: turn1 hi safety Vizag, turn2 hi 'समुद्र की हालत कैसी है?' -> language hi, entity_inherited true",
+    "turns": [
+      {
+        "query": "क्या कल सुबह विशाखापत्तनम के पास मछली पकड़ना सुरक्षित है?",
+        "session_id": "shared-g13",
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "language": "hi"
+        }
+      },
+      {
+        "query": "समुद्र की हालत कैसी है?",
+        "session_id": "shared-g13",
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "language": "hi",
+          "entity_inherited": true
+        }
+      }
+    ]
+  },
+  {
+    "id": "g14",
+    "notes": "real-mode PFZ Kakinada -> answer mentions any ['incois', 'PFZ', 'zone'] (runner marks SKIP if --offline)",
+    "turns": [
+      {
+        "query": "Where are the potential fishing zones near Kakinada tomorrow?",
+        "session_id": null,
+        "mode": "real",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "answer_mentions_any": ["incois", "pfz", "zone"]
+        }
+      }
+    ]
+  },
+  {
+    "id": "g15",
+    "notes": "bn safety -> language bn, Bengali script regex",
+    "turns": [
+      {
+        "query": "আমি কি কাল সকালে ভিসাখাপত্তনমের কাছে মাছ ধরতে যেতে পারি?",
+        "session_id": null,
+        "mode": "mock",
+        "vessel_class": "small_fishing_boat",
+        "expect": {
+          "language": "bn",
+          "language_script_regex": "[\\u0980-\\u09FF]"
+        }
+      }
+    ]
+  }
+]

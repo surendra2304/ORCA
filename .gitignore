@@ -29,3 +29,8 @@ data/geo/india_eez.geojson
 
 # Scratch scripts
 scratch/
+
+# Runtime persistence
+runs/
+sessions/
+

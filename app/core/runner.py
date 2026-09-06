@@ -17,6 +17,9 @@ def utc_iso_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+from app.core.memory import memory
+
+
 async def run_graph_streaming(
     session_id: str,
     query: str,
@@ -24,14 +27,16 @@ async def run_graph_streaming(
     sessions: Optional[SessionManager] = None,
     vessel_class: str = "small_fishing_boat",
     mode: Optional[str] = None,
+    run_id: Optional[str] = None,
 ) -> None:
     """
     Executes the ORCA reasoning graph as a streaming background task.
     Every trace event emitted by nodes and agents is translated into an SSE wire envelope,
     assigned a monotonic seq number, stored in the replay buffer, and published live.
-    Guarantees that run_complete is emitted and the session is marked finished even on error.
+    Guarantees that run_complete is emitted and the session/run is marked finished even on error.
     """
     sm = sessions or default_sessions
+    rid = run_id or session_id
     start_time = time.perf_counter()
     effective_mode = mode if mode in ("mock", "real") else ("mock" if settings.MOCK_MODE else "real")
 
@@ -40,40 +45,44 @@ async def run_graph_streaming(
         if event_type == "answer":
             event_type = "final_answer"
 
-        # Deduplicate run_started if already emitted at session creation
+        # Deduplicate run_started if already emitted at session/run creation
         if event_type == "run_started":
-            stored_events = sm.get_events(session_id)
+            stored_events = sm.get_events(rid)
             if any(e.get("type") == "run_started" for e in stored_events):
                 return
 
-        seq = sm.next_seq(session_id)
+        seq = sm.next_seq(rid)
         payload = dict(entry.get("data") or {})
         agent = entry.get("agent")
         if agent and "agent" not in payload:
             payload["agent"] = agent
 
         envelope = {
-            "run_id": session_id,
+            "run_id": rid,
             "seq": seq,
             "ts": entry.get("ts") or utc_iso_now(),
             "type": event_type,
             "payload": payload,
         }
-        sm.store_event(session_id, envelope)
-        sm.publish(session_id, envelope)
+        sm.store_event(rid, envelope)
+        sm.publish(rid, envelope)
 
     collector = TraceCollector(on_emit=on_trace_emit)
     graph = build_graph(collector)
+
+    history = memory.get_turns(session_id)
 
     initial_state: ORCAState = {
         "query": query,
         "language": language or "en",
         "session_id": session_id,
+        "run_id": rid,
         "vessel_class": vessel_class or "small_fishing_boat",
         "mode": effective_mode,
         "safety_relevant": True,
         "verdict": None,
         "entities": {"lat": None, "lon": None, "location_name": None, "date_hint": None},
+        "history": history,
         "needed_agents": [],
         "execution_plan": [],
         "agent_outputs": {},
@@ -100,8 +109,26 @@ async def run_graph_streaming(
                 "agents_failed": agents_failed,
             },
         })
+
+        # Persist turn to conversation memory
+        v_dict = final_state.get("verdict")
+        v_str = v_dict.get("verdict") if isinstance(v_dict, dict) else None
+        memory.append_turn(
+            session_id=session_id,
+            turn={
+                "query": query,
+                "language": final_state.get("language", language),
+                "entities": final_state.get("entities", {}),
+                "safety_relevant": final_state.get("safety_relevant", True),
+                "verdict_summary": v_str,
+                "final_answer": final_state.get("final_answer", ""),
+                "run_id": rid,
+                "ts": utc_iso_now(),
+            },
+        )
+
     except Exception as exc:
-        logger.error("Fatal exception during graph execution for session %s: %s", session_id, exc, exc_info=True)
+        logger.error("Fatal exception during graph execution for session %s run %s: %s", session_id, rid, exc, exc_info=True)
         duration_ms = int((time.perf_counter() - start_time) * 1000)
 
         await on_trace_emit({
@@ -125,4 +152,4 @@ async def run_graph_streaming(
             },
         })
     finally:
-        sm.mark_finished(session_id)
+        sm.mark_finished(rid)

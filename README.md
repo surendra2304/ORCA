@@ -10,10 +10,10 @@ ORCA is an agentic AI marine decision-support backend tailored for Indian Ocean 
 | **Phase 1** | **Reasoning Core: LangGraph StateGraph, 6 Mock Agents, & POST /query** | **Completed** |
 | **Phase 2** | **Real-time Server-Sent Events (SSE) Streaming & Trace Events** | **Completed** |
 | **Phase 3** | **The Safety Brain: Deterministic YAML Rule Engine & Vessel Verdicts** | **Completed** |
-| Phase 4 | Real Data Ingestion Integrations (INCOIS, IMD, MOSDAC) | Planned |
-| Phase 5 | Multilingual Localization & Translation Layer | Planned |
-| Phase 6 | Geospatial Visualizations & Map Data Layer | Planned |
-| Phase 7 | Persistent Knowledge Store & History | Planned |
+| **Phase 4** | **Real Data Ingestion: Weather & Ocean (Open-Meteo), Resilience & Geocoding** | **Completed** |
+| **Phase 5** | **Real PFZ Provider Chain, Geospatial Geometry, & Provenance Tracking** | **Completed** |
+| **Phase 6** | **Real Hazard Provider Chain (IMD CAP, INCOIS), Geofencing, & Precedence** | **Completed** |
+| **Phase 7** | **Conversational Memory, Multilingual Support, Persistence & Golden Eval Suite** | **Completed** |
 
 ---
 
@@ -79,7 +79,15 @@ curl -X POST "http://127.0.0.1:8000/query?sync=true" \
 ```
 
 ### 6. Run Unit Tests
-Verify the planner validator rules and geospatial haversine math:
+Verify the offline test suite (84 tests covering rule engine, geo, providers, memory, eval):
 ```bash
 uv run pytest -q
 ```
+
+### 7. Run the Golden Evaluation Suite (Phase 7)
+Run the automated end-to-end evaluation harness against 15 golden benchmarks across multi-turn, multilingual, geofencing, and edge cases:
+```bash
+uv run python scripts/run_eval.py --base-url http://127.0.0.1:8000
+```
+Outputs a detailed Markdown summary and saves `eval/last_report.md`.
+

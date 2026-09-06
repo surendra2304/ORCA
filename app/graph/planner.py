@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any, Dict, List, Tuple
 
 from app.graph.state import ORCAState
@@ -12,6 +13,8 @@ CANONICAL_AGENTS = ["weather", "ocean", "pfz", "satellite", "hazard", "geospatia
 
 FALLBACK_PLAN = {
     "safety_relevant": True,
+    "language": "en",
+    "entity_source": "query",
     "needed_agents": CANONICAL_AGENTS,
     "execution_plan": [
         ["weather", "ocean", "pfz", "satellite", "hazard"],
@@ -26,19 +29,28 @@ FALLBACK_PLAN = {
 }
 
 PLANNER_SYSTEM_PROMPT = """You are ORCA Planner, an expert coordinator for marine reasoning in the Indian Ocean.
-Analyze the user query, determine the required agents, extract relevant entities, and formulate an execution plan.
+Analyze the user query, determine the required agents, extract relevant entities, detect the query language, and formulate an execution plan.
+
+Conversation & Multi-turn Context:
+- You are handling turn N of an ongoing conversation. Prior turns are provided when available.
+- Resolve conversational references: "there", "same place", "what if I leave earlier", "what's the weather like there" refer to the most recent turn's location and context.
+- Entities: If the latest query explicitly names a location or coordinates, extract them and set entity_source = "query". If it does NOT name one but prior turns established one, INHERIT lat, lon, and location_name from the most recent turn and set entity_source = "inherited"; otherwise entity_source = "query" with unknown fields null.
+
+Language Detection:
+- Detect the language of the LATEST user query. Return it as an ISO 639-1 two-letter code in "language" (e.g. en, hi, te, ta, bn, mr, gu, kn, ml, or, pa, ur, ...).
+- Respond-to language = latest query language, even if earlier turns were in another language.
 
 Safety Determination:
 - safety_relevant: boolean flag.
-  * true when the query asks about going to sea, safety, trip feasibility, or weather/ocean conditions ("Is it safe to fish?", "Can I sail tomorrow?").
-  * false when the query asks about locations, navigation distances, coordinates, or finding PFZ zones without asking about safety or weather (e.g., "Where is the nearest PFZ near Kakinada?", "What is the distance to Chennai port?").
+  * true when the query asks about going to sea, safety, trip feasibility, operational or navigation status, vessel safety status, or weather/ocean hazards ("Is it safe to fish?", "Can I sail tomorrow?", "what is my status?", "what is my safety status?").
+  * false when the query asks purely about informational locations, finding PFZ zones, navigation distances to ports, or pure weather observation without asking about safety or sailing feasibility (e.g., "Where is the nearest PFZ near Kakinada?", "What is the distance to Chennai port?", "What is the weather there?").
 
 Available Agents:
 - weather: Meteorological forecast, wind speed, gusts, precipitation, lightning risk.
 - ocean: Ocean state forecast, wave heights, swell, sea surface temperature, tides, and currents.
 - pfz: Potential Fishing Zone advisories, fish aggregation coordinates, depth, and confidence.
 - satellite: Earth observation satellite imagery, chlorophyll-a concentration, SST anomalies.
-- geospatial: Navigational distance and bearing calculations from user to PFZ zones and coastal ports.
+- geospatial: Navigational distance and bearing calculations, restricted zones, and EEZ boundary checks. MUST be included whenever coordinates, locations, navigation, or boundary status are checked.
 - hazard: Coastal warnings, high wave alerts, storm surges, and weather advisories.
 
 Dependency Rule:
@@ -47,6 +59,8 @@ Dependency Rule:
 You MUST return ONLY valid JSON matching this exact structure:
 {
   "safety_relevant": true,
+  "language": "en",
+  "entity_source": "query",
   "needed_agents": ["weather", "ocean", "pfz", "satellite", "geospatial", "hazard"],
   "execution_plan": [["weather", "ocean", "pfz", "satellite", "hazard"], ["geospatial"]],
   "entities": {
@@ -145,7 +159,21 @@ def validate_plan(payload: Any) -> Tuple[bool, List[str]]:
             if val is not None and not isinstance(val, str):
                 errors.append(f"Entity '{text_key}' must be a string or null; got {repr(val)}.")
 
-    # 5. safety_relevant validation & fail-safe default
+    # 5. language validation
+    lang = payload.get("language")
+    if not lang or not isinstance(lang, str) or len(lang.strip()) != 2:
+        payload["language"] = "en"
+    else:
+        payload["language"] = lang.strip().lower()
+
+    # 6. entity_source validation
+    es = payload.get("entity_source")
+    if es is not None and es not in ("query", "inherited"):
+        errors.append(f"entity_source must be 'query' or 'inherited'; got {repr(es)}.")
+    elif es is None:
+        payload["entity_source"] = "query"
+
+    # 7. safety_relevant validation & fail-safe default
     sr = payload.get("safety_relevant")
     if not isinstance(sr, bool):
         payload["safety_relevant"] = True
@@ -157,15 +185,48 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
     """
     Planner LangGraph node.
     Emits run_started and plan_created live via TraceCollector.
-    Returns state updates for safety_relevant, needed_agents, execution_plan, and entities.
+    Returns state updates for safety_relevant, language, entity_source, needed_agents, execution_plan, and entities.
     """
     query = state.get("query", "")
     session_id = state.get("session_id", "")
+    run_id = state.get("run_id", session_id)
+    history = state.get("history") or []
 
     # Emit run_started immediately
-    await collector.emit("run_started", None, {"query": query, "session_id": session_id})
+    await collector.emit(
+        "run_started",
+        None,
+        {
+            "query": query,
+            "session_id": session_id,
+            "run_id": run_id,
+            "vessel_class": state.get("vessel_class", "small_fishing_boat"),
+            "mode": state.get("mode", "mock"),
+        },
+    )
 
-    prompt = f"User Query: {query}\nProvide the safety_relevant flag, needed agents, execution plan, and entities."
+    history_lines = []
+    if history:
+        for idx, turn in enumerate(history[-10:], 1):
+            t_q = turn.get("query", "")
+            t_l = turn.get("language", "en")
+            t_e = turn.get("entities") or {}
+            t_loc = t_e.get("location_name") or "None"
+            t_lat = t_e.get("lat")
+            t_lon = t_e.get("lon")
+            t_coords = f"({t_lat}, {t_lon})" if t_lat is not None and t_lon is not None else "coords=None"
+            t_v = turn.get("verdict_summary") or "None"
+            history_lines.append(
+                f"- Turn {idx}: Query=\"{t_q}\", Lang={t_l}, Location={t_loc} {t_coords}, Verdict={t_v}"
+            )
+
+    history_digest = "\n".join(history_lines) if history_lines else "None (first turn in conversation)"
+    prompt = (
+        f"Conversation History (most recent turns):\n{history_digest}\n\n"
+        f"User Query: {query}\n"
+        f"Provide the safety_relevant flag, detected query language (2-letter ISO code), "
+        f"entity_source ('query' or 'inherited'), needed agents, execution plan, and entities."
+    )
 
     # Attempt 1
     raw_plan = None
@@ -203,9 +264,36 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
         final_plan = raw_plan
 
     safety_relevant = final_plan.get("safety_relevant", True)
-    needed_agents = final_plan["needed_agents"]
-    execution_plan = final_plan["execution_plan"]
-    entities = final_plan["entities"]
+    language = final_plan.get("language", "en")
+    entity_source = final_plan.get("entity_source", "query")
+    needed_agents = list(final_plan["needed_agents"])
+    execution_plan = [list(b) for b in final_plan["execution_plan"]]
+    entities = dict(final_plan.get("entities") or {})
+
+    # Ensure entity_source and inheritance are consistently tracked across conversational turns
+    if history:
+        last_turn = history[-1]
+        last_entities = last_turn.get("entities") or {}
+        curr_loc = entities.get("location_name")
+        last_loc = last_entities.get("location_name")
+        if last_loc:
+            # If current query doesn't introduce a new location name and has relative or missing location
+            if not curr_loc:
+                entities.update(last_entities)
+                entity_source = "inherited"
+            elif last_loc.lower() == str(curr_loc).lower() and last_loc.lower() not in query.lower():
+                entity_source = "inherited"
+
+    # Deterministic safety_relevant check for pure weather informational queries
+    if re.match(r"^\s*(what('s| is)|how('s| is))\s+(the\s+)?weather\b", query, re.I):
+        safety_relevant = False
+
+    # Guarantee geospatial is scheduled if explicit coordinates, EEZ, or restricted zone keywords are present
+    has_coords_or_zone = bool(re.search(r"\b\d+(\.\d+)?\s*°?\s*[NS]\b|\b\d+(\.\d+)?\s*°?\s*[EW]\b|coordinates|latitude|longitude|restricted|naval|exclusion|boundary|eez", query, re.I))
+    if has_coords_or_zone and "geospatial" not in needed_agents:
+        needed_agents.append("geospatial")
+        execution_plan.append(["geospatial"])
+
 
     # Emit plan_created immediately
     await collector.emit(
@@ -213,6 +301,8 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
         None,
         {
             "safety_relevant": safety_relevant,
+            "language": language,
+            "entity_source": entity_source,
             "needed_agents": needed_agents,
             "execution_plan": execution_plan,
             "entities": entities,
@@ -221,6 +311,8 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
 
     return {
         "safety_relevant": safety_relevant,
+        "language": language,
+        "entity_source": entity_source,
         "needed_agents": needed_agents,
         "execution_plan": execution_plan,
         "entities": entities,

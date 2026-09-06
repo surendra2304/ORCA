@@ -101,7 +101,9 @@ def test_sse_streaming_lifecycle_and_monotonic_sequence():
                 json={"text": "Is it safe to fish near Kakinada tomorrow?", "language": "en"},
             )
             assert post_resp.status_code == 200
-            session_id = post_resp.json()["session_id"]
+            resp_json = post_resp.json()
+            session_id = resp_json["session_id"]
+            run_id = resp_json["run_id"]
 
             lines: List[str] = []
             async with client.stream("GET", f"/stream/{session_id}") as stream:
@@ -114,7 +116,7 @@ def test_sse_streaming_lifecycle_and_monotonic_sequence():
 
             # Verify envelope shape for every event
             for ev in events:
-                assert ev["run_id"] == session_id
+                assert ev["run_id"] == run_id
                 assert isinstance(ev["seq"], int)
                 assert isinstance(ev["ts"], str)
                 assert isinstance(ev["type"], str)

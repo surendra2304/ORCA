@@ -53,32 +53,42 @@ def build_graph(collector: TraceCollector):
     return builder.compile()
 
 
+from datetime import datetime, timezone
+from app.core.memory import memory
+
+
 async def run_graph(
     query: str,
     language: str = "en",
     session_id: Optional[str] = None,
+    run_id: Optional[str] = None,
     vessel_class: str = "small_fishing_boat",
     mode: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], int]:
     """
     Helper function that initializes state, invokes the LangGraph workflow
-    with a live TraceCollector, emits run_complete, and snapshots the collector
-    into final_state["trace"].
+    with a live TraceCollector, emits run_complete, snapshots the collector
+    into final_state["trace"], and persists the completed turn into ConversationMemory.
     """
     start_time = time.perf_counter()
     sid = session_id or str(uuid.uuid4())
+    rid = run_id or str(uuid.uuid4())
     effective_mode = mode if mode in ("mock", "real") else ("mock" if settings.MOCK_MODE else "real")
     collector = TraceCollector()
+
+    history = memory.get_turns(sid)
 
     initial_state: ORCAState = {
         "query": query,
         "language": language or "en",
         "session_id": sid,
+        "run_id": rid,
         "vessel_class": vessel_class or "small_fishing_boat",
         "mode": effective_mode,
         "safety_relevant": True,
         "verdict": None,
         "entities": {"lat": None, "lon": None, "location_name": None, "date_hint": None},
+        "history": history,
         "needed_agents": [],
         "execution_plan": [],
         "agent_outputs": {},
@@ -109,5 +119,23 @@ async def run_graph(
 
     # Attach the full chronological trace snapshot to final_state
     final_state["trace"] = collector.snapshot()
+    final_state["run_id"] = rid
+
+    # Persist turn to conversation memory
+    v_dict = final_state.get("verdict")
+    v_str = v_dict.get("verdict") if isinstance(v_dict, dict) else None
+    memory.append_turn(
+        session_id=sid,
+        turn={
+            "query": query,
+            "language": final_state.get("language", language),
+            "entities": final_state.get("entities", {}),
+            "safety_relevant": final_state.get("safety_relevant", True),
+            "verdict_summary": v_str,
+            "final_answer": final_state.get("final_answer", ""),
+            "run_id": rid,
+            "ts": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
     return final_state, duration_ms
