@@ -18,12 +18,21 @@ def test_golden_queries_json_schema():
     expected_ids = [f"g{i:02d}" for i in range(1, 16)]
     assert ids == expected_ids, f"Golden query IDs must be g01..g15, got {ids}"
 
+    entry_map = {e["id"]: e for e in entries}
+    for multi_id in ["g06", "g12", "g13"]:
+        turns = entry_map[multi_id]["turns"]
+        assert len(turns) >= 2, f"{multi_id} must have at least 2 turns"
+        sids = [t.get("session_id") for t in turns]
+        assert len(set(sids)) == 1, f"{multi_id} must use a shared session_id across turns, got {sids}"
+        assert sids[0] is not None, f"{multi_id} session_id must not be null"
+
     for entry in entries:
         assert "id" in entry
         assert "turns" in entry and isinstance(entry["turns"], list) and len(entry["turns"]) >= 1
         for turn in entry["turns"]:
             assert "query" in turn
             assert "expect" in turn
+            assert isinstance(turn["expect"], dict)
 
 
 def test_evaluator_http_status():
