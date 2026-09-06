@@ -287,3 +287,191 @@ def test_verdict_input_sources_provenance(rules):
     assert "input_sources" in res
     assert res["input_sources"] == sources
 
+
+def test_geofence_naval_stop_precedence_over_unknown(rules):
+    """Inside naval zone produces NO_GO even with wave/wind missing (stop beats unknown)."""
+    vc = "small_fishing_boat"
+    obs = {
+        "wave_height_m": None,  # core data missing
+        "wind_knots": None,
+        "geospatial": {
+            "user": {"lat": 17.70, "lon": 83.30},
+            "restricted": {"inside": True, "zone": "Visakhapatnam Naval Exclusion Area", "category": "naval"},
+        },
+    }
+    res = evaluate_safety(obs, vc, rules)
+    assert res["verdict"] == "NO_GO"
+    assert "Visakhapatnam Naval Exclusion Area" in res["reason"]
+    assert any(v["parameter"] == "restricted_zone" and v["status"] == "stop" for v in res["violations"])
+
+
+def test_geofence_sanctuary_stop(rules):
+    """Inside sanctuary zone produces NO_GO."""
+    vc = "small_fishing_boat"
+    obs = {
+        "wave_height_m": 1.0,
+        "wind_knots": 10.0,
+        "geospatial": {
+            "user": {"lat": 20.50, "lon": 87.00},
+            "restricted": {"inside": True, "zone": "Gahirmatha Marine Sanctuary", "category": "sanctuary"},
+        },
+    }
+    res = evaluate_safety(obs, vc, rules)
+    assert res["verdict"] == "NO_GO"
+    assert "Gahirmatha Marine Sanctuary" in res["reason"]
+
+
+def test_geofence_imbl_caution(rules):
+    """Inside IMBL buffer zone with calm sea produces CAUTION."""
+    vc = "small_fishing_boat"
+    obs = {
+        "wave_height_m": 1.0,
+        "wind_knots": 10.0,
+        "geospatial": {
+            "user": {"lat": 9.30, "lon": 79.40},
+            "restricted": {"inside": True, "zone": "Gulf of Mannar / Palk Strait IMBL Buffer Zone", "category": "imbl"},
+        },
+    }
+    res = evaluate_safety(obs, vc, rules)
+    assert res["verdict"] == "CAUTION"
+    assert any(c["parameter"] == "restricted_zone" and c["status"] == "caution" for c in res["cautions"])
+
+
+def test_geofence_unknown_category_default_stop(rules):
+    """Unknown category restricted zone defaults to stop -> NO_GO."""
+    vc = "small_fishing_boat"
+    obs = {
+        "wave_height_m": 1.0,
+        "wind_knots": 10.0,
+        "geospatial": {
+            "user": {"lat": 12.0, "lon": 80.0},
+            "restricted": {"inside": True, "zone": "Secret Testing Area", "category": "unclassified_military"},
+        },
+    }
+    res = evaluate_safety(obs, vc, rules)
+    assert res["verdict"] == "NO_GO"
+
+
+def test_geofence_outside_eez_maritime_gate(rules):
+    """Outside EEZ with maritime wave number produces NO_GO; with wave None (inland gate) produces UNKNOWN."""
+    vc = "small_fishing_boat"
+    # Maritime offshore user
+    obs_maritime = {
+        "wave_height_m": 1.5,
+        "wind_knots": 10.0,
+        "geospatial": {
+            "user": {"lat": 8.0, "lon": 90.0},
+            "eez": {"inside": False, "nearest_boundary_km": 500.0},
+        },
+    }
+    res_m = evaluate_safety(obs_maritime, vc, rules)
+    assert res_m["verdict"] == "NO_GO"
+    assert any(v["parameter"] == "eez_membership" for v in res_m["violations"])
+
+    # Inland user (e.g. Hyderabad): wave_height_m is None
+    obs_inland = {
+        "wave_height_m": None,
+        "wind_knots": 8.0,
+        "geospatial": {
+            "user": {"lat": 17.38, "lon": 78.48},
+            "eez": {"inside": False, "nearest_boundary_km": 300.0},
+        },
+    }
+    res_inland = evaluate_safety(obs_inland, vc, rules)
+    assert res_inland["verdict"] == "UNKNOWN"  # maritime gate works, NOT NO_GO
+
+
+def test_geofence_boundary_proximity_caution(rules):
+    """Inside EEZ within 20 km of boundary produces CAUTION."""
+    vc = "small_fishing_boat"
+    obs = {
+        "wave_height_m": 1.0,
+        "wind_knots": 10.0,
+        "geospatial": {
+            "user": {"lat": 12.0, "lon": 82.0},
+            "eez": {"inside": True, "nearest_boundary_km": 15.0},
+        },
+    }
+    res = evaluate_safety(obs, vc, rules)
+    assert res["verdict"] == "CAUTION"
+    assert any(c["parameter"] == "eez_boundary_proximity" for c in res["cautions"])
+
+
+def test_geofence_deep_inside_eez_silent(rules):
+    """Deep inside EEZ (>20 km) with calm sea produces GO (geofence silent)."""
+    vc = "small_fishing_boat"
+    obs = {
+        "wave_height_m": 1.0,
+        "wind_knots": 10.0,
+        "geospatial": {
+            "user": {"lat": 15.0, "lon": 83.0},
+            "eez": {"inside": True, "nearest_boundary_km": 150.0},
+            "restricted": {"inside": False, "zone": None},
+        },
+    }
+    res = evaluate_safety(obs, vc, rules)
+    assert res["verdict"] == "GO"
+    assert len(res["cautions"]) == 0
+    assert len(res["violations"]) == 0
+
+
+def test_geofence_missing_or_user_null_unassessed(rules):
+    """When geospatial is missing or user coords are null, geofence is unassessed."""
+    vc = "small_fishing_boat"
+    # Geospatial missing
+    obs_none = {"wave_height_m": 1.0, "wind_knots": 10.0}
+    res_none = evaluate_safety(obs_none, vc, rules)
+    assert res_none["verdict"] == "GO"
+    assert res_none["unassessed_checks"] == ["geofence"]
+
+    # User null in geospatial
+    obs_null = {
+        "wave_height_m": 1.0,
+        "wind_knots": 10.0,
+        "geospatial": {"user": None, "eez": {"inside": False}},
+    }
+    res_null = evaluate_safety(obs_null, vc, rules)
+    assert res_null["verdict"] == "GO"
+    assert res_null["unassessed_checks"] == ["geofence"]
+
+
+def test_geofence_yaml_driven_flip(rules):
+    """Modifying rules dict dynamically flips the verdict as predicted by YAML."""
+    vc = "small_fishing_boat"
+    obs = {
+        "wave_height_m": 1.0,
+        "wind_knots": 10.0,
+        "geospatial": {
+            "user": {"lat": 9.30, "lon": 79.40},
+            "restricted": {"inside": True, "zone": "IMBL Buffer", "category": "imbl"},
+        },
+    }
+    # Base: imbl is caution
+    res_base = evaluate_safety(obs, vc, rules)
+    assert res_base["verdict"] == "CAUTION"
+
+    # Flip imbl to stop
+    mod_rules = copy.deepcopy(rules)
+    mod_rules["universal"]["geofence"]["restricted_zone_categories"]["imbl"] = "stop"
+    res_flip = evaluate_safety(obs, vc, mod_rules)
+    assert res_flip["verdict"] == "NO_GO"
+
+
+def test_hazard_affected_false_excluded(rules):
+    """Alerts with affected=False are excluded from severity mapping; affected=True or None are included."""
+    vc = "small_fishing_boat"
+    # Far-away extreme cyclone alert (affected=False) should NOT trigger NO_GO
+    obs = {
+        "wave_height_m": 1.0,
+        "wind_knots": 10.0,
+        "hazard_alerts": [
+            {"type": "cyclone", "severity": "extreme", "affected": False},
+            {"type": "high_wave", "severity": "moderate", "affected": True},
+        ],
+    }
+    res = evaluate_safety(obs, vc, rules)
+    # The cyclone alert was excluded because affected is False; the moderate high_wave is included -> CAUTION
+    assert res["verdict"] == "CAUTION"
+    assert not any("cyclone" in v["parameter"] for v in res["violations"])
+
+

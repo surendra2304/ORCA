@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     INCOIS_API_KEY: str = ""
     INCOIS_PFZ_BASE_URL: str = ""
     PFZ_ADVISORY_DIR: str = "data/pfz_advisories"
+    IMD_CAP_FEED_URL: str = ""        # set when IMD CAP feed URL is confirmed
+    IMD_API_KEY: str = ""             # if the IMD API path needs a key
+    INCOIS_ALERTS_BASE_URL: str = ""  # set when INCOIS registration approves
+    HAZARD_ADVISORY_DIR: str = "data/hazard_advisories"
     GEO_DATA_DIR: str = "data/geo"
     APP_NAME: str = "ORCA"
     VERSION: str = "0.1.0"

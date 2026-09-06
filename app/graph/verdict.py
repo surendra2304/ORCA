@@ -99,6 +99,9 @@ async def verdict_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
         # Hazard alerts
         hazard_alerts = hazard_data.get("alerts") if hazard_data else None
 
+        # Geospatial observations
+        geospatial_data = agent_outputs.get("geospatial")
+
         observations = {
             "wave_height_m": wave_height_m,
             "wind_knots": wind_knots,
@@ -107,6 +110,7 @@ async def verdict_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             "gusts_knots_basis": gusts_basis,
             "lightning_risk": lightning_risk,
             "hazard_alerts": hazard_alerts,
+            "geospatial": geospatial_data,
         }
 
         # Provenance: assemble input_sources from consumed agents only
@@ -117,6 +121,14 @@ async def verdict_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             input_sources["ocean"] = ocean_data["source"]
         if hazard_data and "source" in hazard_data:
             input_sources["hazard"] = hazard_data["source"]
+        # input_sources gains "geospatial" ONLY when geofence was actually evaluated (user coords present)
+        if (
+            geospatial_data
+            and isinstance(geospatial_data, dict)
+            and geospatial_data.get("user") is not None
+            and "source" in geospatial_data
+        ):
+            input_sources["geospatial"] = geospatial_data["source"]
 
         # 3. Deterministic evaluation
         rules = load_rules()

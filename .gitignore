@@ -27,3 +27,5 @@ build/
 # Downloaded geodata
 data/geo/india_eez.geojson
 
+# Scratch scripts
+scratch/

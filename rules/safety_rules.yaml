@@ -1,4 +1,4 @@
-version: "3.0.0"
+version: "3.1.0"
 vessel_classes:
   small_fishing_boat:
     label: "Small traditional boat / catamaran / canoe"
@@ -19,3 +19,12 @@ universal:
   lightning_risk:      {high: stop, moderate: caution}
   hazard_alert_severity: {moderate: caution, high: stop, extreme: stop}
   cyclone_alert: stop        # any cyclone alert -> stop, all classes
+  geofence:
+    restricted_zone_categories:      # from restricted_zones.geojson props
+      naval: stop
+      sanctuary: stop
+      oilfield: stop
+      imbl: caution
+      default: stop                  # unknown category -> conservative stop
+    outside_eez: stop
+    eez_boundary_proximity_km: {caution: 20}

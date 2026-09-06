@@ -77,6 +77,7 @@ def evaluate_safety(
             "violations": [],
             "cautions": [],
             "unknown_parameters": ["vessel_class"],
+            "unassessed_checks": ["geofence"],
             "reason": f"unknown vessel class '{vessel_class}'; valid options: {list(vessel_classes.keys())}",
             "evaluated_at": utc_iso_now(),
         }
@@ -192,6 +193,7 @@ def evaluate_safety(
                 cautions.append(entry)
 
     # 3. Universal hazard alerts (cyclone -> stop, severity mapping)
+    # Location relevance filter: exclude alerts where affected is False; include affected is True or affected is None (conservative)
     hazard_alerts = observations.get("hazard_alerts")
     if hazard_alerts is not None:
         if isinstance(hazard_alerts, list):
@@ -201,6 +203,10 @@ def evaluate_safety(
             for alert in hazard_alerts:
                 if not isinstance(alert, dict):
                     continue
+                # Exclude alerts explicitly not affecting user
+                if alert.get("affected") is False:
+                    continue
+
                 a_type = str(alert.get("type", "hazard")).strip().lower()
                 a_sev = str(alert.get("severity", "moderate")).strip().lower()
 
@@ -224,18 +230,90 @@ def evaluate_safety(
                 elif status == "caution":
                     cautions.append(entry)
 
-    # 4. Final verdict determination
-    # Fail-safe: if ANY core parameter (wave_height_m, wind_knots) is unknown -> UNKNOWN (never GO)
+    # 4. Geofence evaluation (restricted zones & EEZ)
+    geospatial_data = observations.get("geospatial")
+    unassessed_checks: List[str] = []
+
+    if geospatial_data and isinstance(geospatial_data, dict) and geospatial_data.get("user") is not None:
+        geofence_rules = universal.get("geofence", {})
+        restr_categories = geofence_rules.get("restricted_zone_categories", {})
+        default_restr_action = restr_categories.get("default")
+
+        # 4a. Restricted Zone Check
+        restricted = geospatial_data.get("restricted") or {}
+        if restricted.get("inside") is True:
+            zone_name = restricted.get("zone", "Restricted Zone")
+            zone_category = str(restricted.get("category", "default")).strip().lower()
+            restr_action = restr_categories.get(zone_category, default_restr_action)
+            entry = {
+                "parameter": "restricted_zone",
+                "value": zone_name,
+                "category": zone_category,
+                "status": restr_action,
+            }
+            evaluated_parameters.append(entry)
+            if restr_action == "stop":
+                violations.append(entry)
+            elif restr_action == "caution":
+                cautions.append(entry)
+
+        # 4b. EEZ Membership & Boundary Proximity (Maritime Gate)
+        # Apply ONLY when the ocean parameter wave_height_m is a number (maritime gate: inland user must NOT trigger outside_eez)
+        wave_val = observations.get("wave_height_m")
+        is_maritime = isinstance(wave_val, (int, float))
+
+        if is_maritime:
+            eez = geospatial_data.get("eez") or {}
+            inside_eez = eez.get("inside")
+            boundary_dist = eez.get("nearest_boundary_km")
+            outside_eez_action = geofence_rules.get("outside_eez")
+
+            if inside_eez is False:
+                entry = {
+                    "parameter": "eez_membership",
+                    "value": "outside Indian EEZ",
+                    "status": outside_eez_action,
+                }
+                evaluated_parameters.append(entry)
+                if outside_eez_action == "stop":
+                    violations.append(entry)
+                elif outside_eez_action == "caution":
+                    cautions.append(entry)
+            elif inside_eez is True and boundary_dist is not None:
+                prox_rules = geofence_rules.get("eez_boundary_proximity_km", {})
+                caution_dist = prox_rules.get("caution")
+                if caution_dist is not None and float(boundary_dist) <= float(caution_dist):
+                    entry = {
+                        "parameter": "eez_boundary_proximity",
+                        "value": float(boundary_dist),
+                        "caution": float(caution_dist),
+                        "status": "caution",
+                    }
+                    evaluated_parameters.append(entry)
+                    cautions.append(entry)
+    else:
+        # geospatial present but user null, OR geospatial output missing
+        unassessed_checks.append("geofence")
+
+    # 5. Final verdict determination
+    # PRECEDENCE (semantic decision for Phase 6):
+    # 1. any stop -> NO_GO (a stop wins even if core data is unknown, e.g. restricted zone / cyclone is definite danger)
+    # 2. else any core parameter unknown (wave_height_m, wind_knots) -> UNKNOWN
+    # 3. else any caution -> CAUTION
+    # 4. else GO
     core_missing = any(p in unknown_parameters for p in ("wave_height_m", "wind_knots"))
 
-    if core_missing:
-        verdict = "UNKNOWN"
-        reason = "insufficient data for a safety assessment; consult official IMD/INCOIS advisories"
-    elif len(violations) > 0:
+    if len(violations) > 0:
         verdict = "NO_GO"
         v = violations[0]
         p = v["parameter"]
-        if p == "wave_height_m":
+        if p == "restricted_zone":
+            cat = v.get("category", "")
+            cat_str = f" ({cat})" if cat else ""
+            reason = f"NO-GO: position is inside restricted zone '{v['value']}'{cat_str}"
+        elif p == "eez_membership":
+            reason = "NO-GO: position is outside Indian EEZ waters"
+        elif p == "wave_height_m":
             reason = f"NO-GO: wave height {v['value']} m exceeds the {v['stop']} m limit for {vessel_class}"
         elif p == "wind_knots":
             reason = f"NO-GO: wind {v['value']} knots exceeds the {v['stop']} knots limit for {vessel_class}"
@@ -250,11 +328,20 @@ def evaluate_safety(
             reason = f"NO-GO: {clean_type} alert severity {v['value']} exceeds safety limit for {vessel_class}"
         else:
             reason = f"NO-GO: {p} exceeds safety limit for {vessel_class}"
+    elif core_missing:
+        verdict = "UNKNOWN"
+        reason = "insufficient data for a safety assessment; consult official IMD/INCOIS advisories"
     elif len(cautions) > 0:
         verdict = "CAUTION"
         c = cautions[0]
         p = c["parameter"]
-        if p == "wave_height_m":
+        if p == "restricted_zone":
+            cat = c.get("category", "")
+            cat_str = f" ({cat})" if cat else ""
+            reason = f"CAUTION: position is inside restricted zone '{c['value']}'{cat_str}"
+        elif p == "eez_boundary_proximity":
+            reason = f"CAUTION: position is {c['value']} km from the Indian EEZ boundary"
+        elif p == "wave_height_m":
             reason = f"CAUTION: wave height {c['value']} m exceeds the {c['caution']} m caution threshold for {vessel_class}"
         elif p == "wind_knots":
             reason = f"CAUTION: wind {c['value']} knots exceeds the {c['caution']} knots caution threshold for {vessel_class}"
@@ -274,11 +361,12 @@ def evaluate_safety(
     result = {
         "verdict": verdict,
         "vessel_class": vessel_class,
-        "rules_version": rules.get("version", "3.0.0"),
+        "rules_version": rules.get("version", "3.1.0"),
         "evaluated_parameters": evaluated_parameters,
         "violations": violations,
         "cautions": cautions,
         "unknown_parameters": unknown_parameters,
+        "unassessed_checks": unassessed_checks,
         "reason": reason,
         "evaluated_at": utc_iso_now(),
     }

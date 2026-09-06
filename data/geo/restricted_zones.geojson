@@ -9,7 +9,7 @@
       "type": "Feature",
       "properties": {
         "name": "Visakhapatnam Naval Exclusion Area",
-        "category": "military",
+        "category": "naval",
         "restriction": "Restricted military naval operations zone. Civilian entry and commercial fishing strictly prohibited."
       },
       "geometry": {
@@ -37,7 +37,7 @@
       "type": "Feature",
       "properties": {
         "name": "Gahirmatha Marine Sanctuary",
-        "category": "ecological",
+        "category": "sanctuary",
         "restriction": "Olive Ridley sea turtle nesting sanctuary. Mechanized fishing prohibited November to May."
       },
       "geometry": {
@@ -57,7 +57,7 @@
       "type": "Feature",
       "properties": {
         "name": "KG-Basin Offshore Petroleum Zone",
-        "category": "industrial",
+        "category": "oilfield",
         "restriction": "Offshore drilling rig security perimeter. 500m safety zone around oil and gas platforms."
       },
       "geometry": {
@@ -69,6 +69,26 @@
             [82.15, 15.45],
             [81.85, 15.45],
             [81.85, 15.15]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gulf of Mannar / Palk Strait IMBL Buffer Zone",
+        "category": "imbl",
+        "restriction": "International Maritime Boundary Line buffer zone. Navigation requires caution and official authorization."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [79.10, 9.00],
+            [79.60, 9.00],
+            [79.60, 9.50],
+            [79.10, 9.50],
+            [79.10, 9.00]
           ]
         ]
       }

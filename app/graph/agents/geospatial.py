@@ -179,6 +179,7 @@ class GeospatialAgent(MockAgent):
         # 4. Restricted Zones Check
         restr_inside = False
         restr_zone_name: Optional[str] = None
+        restr_category: Optional[str] = None
         min_restr_dist = float("inf")
 
         for rz in restricted_zones:
@@ -186,6 +187,7 @@ class GeospatialAgent(MockAgent):
             if point_in_polygon(lat_f, lon_f, poly):
                 restr_inside = True
                 restr_zone_name = rz.get("name")
+                restr_category = rz.get("category")
             d = distance_to_polygon_km(lat_f, lon_f, poly)
             if d is not None and d < min_restr_dist:
                 min_restr_dist = d
@@ -194,6 +196,7 @@ class GeospatialAgent(MockAgent):
             "inside": restr_inside,
             "zone": restr_zone_name if restr_inside else None,
             "nearest_km": 0.0 if restr_inside else (round(min_restr_dist, 2) if min_restr_dist != float("inf") else None),
+            "category": restr_category if restr_inside else None,
         }
 
         return {
