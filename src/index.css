@@ -1,0 +1,121 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --color-brand: #20B2AA;
+  --color-brand-hover: #1a9e97;
+  --color-brand-light: #e0f5f4;
+  --color-brand-surface: #f0f8fb;
+  --color-brand-dark: #004d6b;
+}
+
+:root {
+  --brand: #20B2AA;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #ffffff;
+  color: #1e293b;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Marker Styling for Marine Intelligence Map */
+.custom-user-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.custom-user-pin {
+  width: 26px;
+  height: 26px;
+  background: #2563eb;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  border: 3px solid #ffffff;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.4);
+}
+
+.custom-user-pin::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin: 6px 0 0 6px;
+  background: #ffffff;
+  position: absolute;
+  border-radius: 50%;
+}
+
+.zone-marker-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zone-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  position: relative;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.zone-circle.green {
+  background: radial-gradient(circle, #22c55e 0%, #16a34a 100%);
+  border: 2px dashed rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.6);
+}
+
+.zone-circle.orange {
+  background: radial-gradient(circle, #f97316 0%, #ea580c 100%);
+  border: 2px dashed rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 16px rgba(249, 115, 22, 0.6);
+}
+
+.zone-circle.red {
+  background: radial-gradient(circle, #ef4444 0%, #dc2626 100%);
+  border: 2px dashed rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.7);
+  animation: pulse-ring 2s infinite ease-out;
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.distance-badge {
+  background: rgba(15, 23, 42, 0.85);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+/* Hide default leaflet attribution watermark for clean minimalism */
+.leaflet-control-attribution {
+  font-size: 9px !important;
+  opacity: 0.7;
+}
