@@ -1,0 +1,10 @@
+{
+  "name": "Remix Remix ORCA Fishermen",
+  "description": "Smart marine intelligence platform for fishermen with voice bot, live sea conditions, marine map, analytics, and PFZ areas.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
