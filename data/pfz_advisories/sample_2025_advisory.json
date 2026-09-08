@@ -1,0 +1,30 @@
+{
+  "advisory_id": "PFZ-INCOIS-20250901-01",
+  "advisory_date": "2025-09-01",
+  "source_url": "https://incois.gov.in/portal/datainfo/pfz.jsp",
+  "digitized": true,
+  "zones": [
+    {
+      "polygon": [
+        [16.3, 82.3],
+        [16.3, 82.7],
+        [16.7, 82.7],
+        [16.7, 82.3]
+      ],
+      "depth_m": 45.0,
+      "center": [16.5, 82.5],
+      "confidence": 0.82
+    },
+    {
+      "polygon": [
+        [17.4, 83.3],
+        [17.4, 83.7],
+        [17.8, 83.7],
+        [17.8, 83.3]
+      ],
+      "depth_m": 60.0,
+      "center": [17.6, 83.5],
+      "confidence": 0.75
+    }
+  ]
+}

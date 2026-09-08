@@ -1,0 +1,9 @@
+[
+  {"name": "Visakhapatnam", "lat": 17.688, "lon": 83.285},
+  {"name": "Kakinada", "lat": 16.98, "lon": 82.25},
+  {"name": "Paradip", "lat": 20.27, "lon": 86.66},
+  {"name": "Chennai", "lat": 13.09, "lon": 80.29},
+  {"name": "Tuticorin", "lat": 8.76, "lon": 78.13},
+  {"name": "Kochi", "lat": 9.96, "lon": 76.26},
+  {"name": "Mumbai", "lat": 18.92, "lon": 72.83}
+]

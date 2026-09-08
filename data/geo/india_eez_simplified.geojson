@@ -1,0 +1,48 @@
+{
+  "type": "FeatureCollection",
+  "meta": {
+    "provenance": "simplified demonstration boundary — replace via scripts/fetch_geodata.py with VLIZ Marine Regions EEZ v12",
+    "units": "EPSG:4326"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "India East Coast EEZ (Simplified)",
+        "ocean": "Bay of Bengal",
+        "description": "Simplified approximation of India East Coast Exclusive Economic Zone out to 200 nautical miles"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [86.5, 20.3],
+            [85.5, 19.5],
+            [84.5, 19.0],
+            [83.5, 18.3],
+            [83.0, 17.7],
+            [82.0, 16.9],
+            [81.2, 16.2],
+            [80.0, 15.8],
+            [79.8, 14.5],
+            [80.0, 13.1],
+            [79.5, 12.0],
+            [79.5, 10.8],
+            [79.0, 9.3],
+            [77.3, 8.1],
+            [78.5, 6.0],
+            [81.0, 6.0],
+            [84.0, 8.0],
+            [86.0, 10.5],
+            [88.0, 13.0],
+            [89.0, 16.0],
+            [89.5, 18.5],
+            [88.5, 20.5],
+            [87.5, 21.0],
+            [86.5, 20.3]
+          ]
+        ]
+      }
+    }
+  ]
+}
