@@ -1,0 +1,18 @@
+[
+  {
+    "place_id": 123456,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "relation",
+    "osm_id": 78910,
+    "lat": "17.6868",
+    "lon": "83.2185",
+    "class": "boundary",
+    "type": "administrative",
+    "place_rank": 16,
+    "importance": 0.65,
+    "addresstype": "city",
+    "name": "Visakhapatnam",
+    "display_name": "Visakhapatnam, Visakhapatnam District, Andhra Pradesh, India",
+    "boundingbox": ["17.58", "17.85", "83.10", "83.38"]
+  }
+]

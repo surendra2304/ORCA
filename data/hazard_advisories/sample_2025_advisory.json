@@ -1,0 +1,26 @@
+{
+  "advisory_id": "HAZARD-IMD-INCOIS-20250901-01",
+  "advisory_date": "2025-09-01",
+  "source_url": "https://mausam.imd.gov.in/marine",
+  "digitized": true,
+  "alerts": [
+    {
+      "type": "high_wave",
+      "severity": "moderate",
+      "area": "North coastal Andhra Pradesh",
+      "validity": "2025-09-01T00:00:00Z to 2025-09-02T12:00:00Z",
+      "headline": "Moderate high wave warning along North coastal Andhra Pradesh",
+      "center": [16.9, 82.3],
+      "radius_km": 60.0
+    },
+    {
+      "type": "fishermen_warning",
+      "severity": "moderate",
+      "area": "Gulf of Mannar / IMBL region",
+      "validity": "2025-09-01T00:00:00Z to 2025-09-02T18:00:00Z",
+      "headline": "Fishermen warning for Gulf of Mannar and IMBL region due to squally weather",
+      "center": [9.2, 79.3],
+      "radius_km": 80.0
+    }
+  ]
+}
