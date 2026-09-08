@@ -1,0 +1,431 @@
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgcrypto, vector]
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+
+
+model Workspace {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  websiteUrl String?  @map("website_url")
+  brandColor String?  @default("#0E7A5F") @map("brand_color")
+  publicKey  String   @unique @map("public_key")
+  plan       String @default("starter")
+  lastWidgetPingAt DateTime? @map("last_widget_ping_at") @db.Timestamptz
+  isDemo           Boolean   @default(false) @map("is_demo")
+  expiresAt        DateTime? @map("expires_at") @db.Timestamptz
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  users         User[]
+  kbDocuments   KbDocument[]
+  kbChunks      KbChunk[]
+  kbCrawlJobs   KbCrawlJob[]
+  agents        Agent[]
+  conversations Conversation[]
+  messages      Message[]
+  leads         Lead[]
+  agentVersions AgentVersion[]
+
+  subscription  Subscription?
+  usageEvents   UsageEvent[]
+  phoneNumbers  PhoneNumber[]
+  calls         Call[]
+  outboundCampaigns OutboundCampaign[]
+  integrations  Integration[]
+
+  @@map("workspaces")
+}
+
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String?
+  role         String @default("owner")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
+  agentVersions AgentVersion[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @map("token_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model KbDocument {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  type        String
+  name        String
+  sourceUri   String?  @map("source_uri")
+  status      String   @default("processing")
+  error       String?
+  chunkCount  Int      @default(0) @map("chunk_count")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  kbChunks  KbChunk[]
+
+  crawlJobId  String?     @map("crawl_job_id") @db.Uuid
+  crawlJob    KbCrawlJob? @relation(fields: [crawlJobId], references: [id], onDelete: Cascade)
+
+  @@map("kb_documents")
+}
+
+model KbChunk {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  documentId  String   @map("document_id") @db.Uuid
+  chunkIndex  Int      @map("chunk_index")
+  content     String
+  embedding   Unsupported("vector(384)")
+  tokenLen    Int?     @map("token_len")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document  KbDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([embedding], map: "kb_chunks_embedding_idx")
+  @@index([workspaceId], map: "kb_chunks_ws_idx")
+  @@map("kb_chunks")
+}
+
+model Agent {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  kind           String
+  name           String
+  status         String @default("draft")
+  persona        String?  @default("Friendly")
+  greeting       String?
+  goal           String?  @default("qualify")
+  voiceName      String?  @map("voice_name")
+  language       String?  @default("en-US")
+  speakingSpeed  String?  @default("natural") @map("speaking_speed")
+  channels       Json?    @default("{\"web\":true,\"phone\":false}")
+  captureFields  Json?    @default("[\"name\",\"email\"]") @map("capture_fields")
+  connectedKbDocumentIds Json?    @default("[]") @map("connected_kb_document_ids")
+  
+  vapiAssistantId     String?  @map("vapi_assistant_id")
+  vapiServerUrlSecret String?  @map("vapi_server_url_secret")
+  
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  versions      AgentVersion[]
+  phoneNumbers  PhoneNumber[]
+  outboundCampaigns OutboundCampaign[]
+  employeeActions EmployeeAction[]
+
+  @@map("agents")
+}
+
+model Conversation {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId  String    @map("workspace_id") @db.Uuid
+  agentId      String?   @map("agent_id") @db.Uuid
+  channel      String
+  visitorLabel String?   @map("visitor_label")
+  visitorMeta  Json?     @map("visitor_meta")
+  captured     Boolean   @default(false)
+  score        String?
+  messageCount Int       @default(0) @map("message_count")
+  startedAt    DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  endedAt      DateTime? @map("ended_at") @db.Timestamptz
+  callSid      String?   @map("call_sid")
+  durationSec  Int?      @map("duration_sec")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent     Agent?    @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  messages  Message[]
+  leads     Lead[]
+
+  @@index([workspaceId, startedAt], map: "conversations_ws_started_idx")
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  role           String
+  content        String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt], map: "messages_ws_created_idx")
+  @@index([conversationId, createdAt], map: "messages_conv_created_idx")
+  @@map("messages")
+}
+
+model Lead {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  conversationId String?   @map("conversation_id") @db.Uuid
+  name           String?
+  email          String?
+  phone          String?
+  score          String @default("Cold")
+  status         String    @default("New")
+  intent         String?
+  aiNote         String?   @map("ai_note")
+  source         String?
+  crmRecordId    String?   @map("crm_record_id")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation       Conversation?       @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  calls              Call[]
+  outboundQueueItems OutboundQueueItem[]
+  syncRecords        LeadIntegrationSync[]
+
+  @@index([workspaceId, createdAt], map: "leads_ws_created_idx")
+  @@index([workspaceId, score, createdAt], map: "leads_ws_score_created_idx")
+  @@index([workspaceId, status, createdAt], map: "leads_ws_status_created_idx")
+  @@map("leads")
+}
+
+model AgentVersion {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId        String   @map("agent_id") @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  configSnapshot Json     @map("config_snapshot")
+  publishedAt    DateTime @default(now()) @map("published_at") @db.Timestamptz
+  publishedBy    String?  @map("published_by") @db.Uuid
+
+  agent          Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user           User?     @relation(fields: [publishedBy], references: [id], onDelete: SetNull)
+
+  @@map("agent_versions")
+}
+
+model Subscription {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId        String    @unique @map("workspace_id") @db.Uuid
+  stripeCustomerId   String    @map("stripe_customer_id")
+  stripeSubId        String?   @map("stripe_sub_id")
+  plan               String @default("starter")
+  status             String    @default("active")
+  currentPeriodEnd   DateTime? @map("current_period_end") @db.Timestamptz
+  cancelAtPeriodEnd  Boolean   @default(false) @map("cancel_at_period_end")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+model UsageEvent {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  type        String   // 'chat_message', 'voice_minute_web', 'voice_minute_phone', 'lead', 'kb_doc'
+  quantity    Int      @default(1)
+  agentId     String?  @map("agent_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("usage_events")
+}
+
+model PhoneNumber {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  agentId          String    @map("agent_id") @db.Uuid
+  provider         String    @default("twilio")
+  e164             String
+  agentToken       String    @unique @map("agent_token")
+  status           String    @default("pending")
+  authTokenEnc     String?   @map("auth_token_enc")
+  recordingEnabled Boolean   @default(false) @map("recording_enabled")
+  connectedAt      DateTime? @map("connected_at") @db.Timestamptz
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@map("phone_numbers")
+}
+
+model Call {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId    String            @map("workspace_id") @db.Uuid
+  agentId        String            @map("agent_id") @db.Uuid
+  leadId         String?           @map("lead_id") @db.Uuid
+  campaignId     String?           @map("campaign_id") @db.Uuid
+  callSid        String            @unique @map("call_sid")
+  fromNumber     String            @map("from_number")
+  durationSec    Int               @map("duration_sec")
+  recordingUrl   String?           @map("recording_url")
+  latencyMs      Int?              @map("latency_ms")
+  interruptions  Int               @default(0)
+  outcome        String?
+  direction      String     @default("inbound")
+  status         String            @default("in-progress")
+  disposition    String?
+  customContext  Json?             @map("custom_context")
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead      Lead?             @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  campaign  OutboundCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt], map: "calls_ws_created_idx")
+  @@map("calls")
+}
+
+model KbCrawlJob {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  url         String
+  status      String   @default("processing") // processing, completed, failed
+  totalPages  Int      @default(0) @map("total_pages")
+  completed   Int      @default(0)
+  error       String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documents   KbDocument[]
+
+  @@map("kb_crawl_jobs")
+}
+
+model OutboundCampaign {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String              @map("workspace_id") @db.Uuid
+  agentId         String              @map("agent_id") @db.Uuid
+  name            String
+  status          String              @default("draft") // draft, running, paused, completed, cancelled
+  fromNumber      String              @map("from_number")
+  customPrompt    String?             @map("custom_prompt")
+  totalLeads      Int                 @default(0) @map("total_leads")
+  completedLeads  Int                 @default(0) @map("completed_leads")
+  successfulLeads Int                 @default(0) @map("successful_leads")
+  scheduledAt     DateTime?           @map("scheduled_at") @db.Timestamptz
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  workspace  Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent      Agent               @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  queueItems OutboundQueueItem[]
+  calls      Call[]
+
+  @@index([workspaceId, createdAt], map: "campaigns_ws_created_idx")
+  @@map("outbound_campaigns")
+}
+
+model OutboundQueueItem {
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaignId    String            @map("campaign_id") @db.Uuid
+  leadId        String?           @map("lead_id") @db.Uuid
+  phone         String
+  recipientName String?           @map("recipient_name")
+  customData    Json?             @map("custom_data")
+  status        String            @default("pending") // pending, calling, answered, no_answer, busy, failed
+  attempts      Int               @default(0)
+  callSid       String?           @map("call_sid")
+  lastAttemptAt DateTime?         @map("last_attempt_at") @db.Timestamptz
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  campaign OutboundCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead     Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, status], map: "queue_campaign_status_idx")
+  @@map("outbound_queue_items")
+}
+
+model Integration {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  provider      String
+  connectionId  String?  @map("connection_id")
+  composioConnectedAccountId String? @map("composio_connected_account_id")
+  status        String   @default("connected")
+  connectedAt   DateTime? @map("connected_at") @db.Timestamptz
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  employeeActions EmployeeAction[]
+  syncRecords     LeadIntegrationSync[]
+
+  @@index([workspaceId])
+  @@map("integrations")
+}
+
+model EmployeeAction {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentId       String   @map("agent_id") @db.Uuid
+  integrationId String   @map("integration_id") @db.Uuid
+  actionType    String   @map("action_type")
+  enabled       Boolean  @default(true)
+  configuration Json?
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  agent       Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, integrationId, actionType])
+  @@map("employee_actions")
+}
+
+model EmailActionTemplate {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employeeActionId String @unique @map("employee_action_id") @db.Uuid
+  subject   String?
+  body      String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("email_action_templates")
+}
+
+model LeadIntegrationSync {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  leadId         String   @map("lead_id") @db.Uuid
+  integrationId  String   @map("integration_id") @db.Uuid
+  externalRecordId String? @map("external_record_id")
+  status         String   @default("pending")
+  error          String?
+  syncedAt       DateTime? @map("synced_at") @db.Timestamptz
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  lead        Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, integrationId])
+  @@map("lead_integration_syncs")
+}

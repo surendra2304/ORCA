@@ -1,0 +1,17 @@
+{
+  "name": "widget",
+  "version": "0.0.1",
+  "description": "KaliGanAI Embeddable Widget",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@google/genai": "^2.8.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.2",
+    "vite": "^5.0.0"
+  }
+}
