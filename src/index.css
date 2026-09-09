@@ -1,0 +1,206 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+@theme {
+  --color-ocean-bg: #f0f4f5;
+  --color-ocean-card: #e5edef;
+  --color-ocean-sub: #c8dcdb;
+  --color-ocean-header: #134e5e;
+  --color-ocean-primary: #2a8a89;
+  --color-ocean-hover: #38a3a5;
+  --color-ocean-text: #0f2a30;
+
+  --color-brand: #2a8a89;
+  --color-brand-hover: #38a3a5;
+  --color-brand-light: #c8dcdb;
+  --color-brand-surface: #e5edef;
+  --color-brand-dark: #134e5e;
+}
+
+:root {
+  --page-bg: #f0f4f5;
+  --card-bg: #e5edef;
+  --stat-subcard-bg: #c8dcdb;
+  --header-navbar-accent: #134e5e;
+  --primary-btn-active: #2a8a89;
+  --primary-btn-hover: #38a3a5;
+  --main-text: #0f2a30;
+
+  --brand: #2a8a89;
+  --brand-hover: #38a3a5;
+  --brand-light: #c8dcdb;
+  --brand-surface: #e5edef;
+  --brand-dark: #134e5e;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #f0f4f5;
+  color: #0f2a30;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Marker Styling for Marine Intelligence Map */
+.custom-user-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.custom-user-pin {
+  width: 26px;
+  height: 26px;
+  background: #2563eb;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  border: 3px solid #ffffff;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.4);
+}
+
+.custom-user-pin::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin: 6px 0 0 6px;
+  background: #ffffff;
+  position: absolute;
+  border-radius: 50%;
+}
+
+.zone-marker-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zone-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  position: relative;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.zone-circle.green {
+  background: radial-gradient(circle, #22c55e 0%, #16a34a 100%);
+  border: 2px dashed rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.6);
+}
+
+.zone-circle.orange {
+  background: radial-gradient(circle, #f97316 0%, #ea580c 100%);
+  border: 2px dashed rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 16px rgba(249, 115, 22, 0.6);
+}
+
+.zone-circle.red {
+  background: radial-gradient(circle, #ef4444 0%, #dc2626 100%);
+  border: 2px dashed rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.7);
+  animation: pulse-ring 2s infinite ease-out;
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.distance-badge {
+  background: rgba(15, 23, 42, 0.85);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+/* Hide default leaflet attribution watermark for clean minimalism */
+.leaflet-control-attribution {
+  font-size: 9px !important;
+  opacity: 0.7;
+}
+
+/* ORCA Logo Floating & Soft Glow Animation */
+@keyframes orca-float {
+  0%, 100% {
+    transform: translateY(0px);
+    filter: drop-shadow(0 0 22px rgba(45, 212, 191, 0.5)) drop-shadow(0 8px 16px rgba(0, 0, 0, 0.35));
+  }
+  50% {
+    transform: translateY(-6px);
+    filter: drop-shadow(0 0 32px rgba(45, 212, 191, 0.75)) drop-shadow(0 14px 22px rgba(0, 0, 0, 0.25));
+  }
+}
+
+@keyframes orca-glow-pulse {
+  0%, 100% {
+    opacity: 0.25;
+    transform: scale(0.95);
+  }
+  50% {
+    opacity: 0.42;
+    transform: scale(1.05);
+  }
+}
+
+.animate-orca-float {
+  animation: orca-float 5s ease-in-out infinite;
+  will-change: transform, filter;
+}
+
+.animate-orca-glow {
+  animation: orca-glow-pulse 5s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Subtle, professional hover micro-interactions for cards, buttons, and interactive icons */
+.hover-card-lift {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hover-card-lift:hover {
+  transform: translateY(-1.5px);
+  box-shadow: 0 6px 16px -2px rgba(19, 78, 94, 0.09);
+}
+
+.hover-btn-lift {
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hover-btn-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px -1px rgba(42, 138, 137, 0.25);
+}
+
+.hover-icon-lift {
+  transition: transform 0.18s ease;
+}
+.hover-icon-lift:hover {
+  transform: translateY(-1px) scale(1.06);
+}
+
