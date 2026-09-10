@@ -10,7 +10,17 @@
         value: 8000
       - key: MOCK_MODE
         value: "false"
+      - key: MODEL_GEMINI
+        value: "gemini-3.5-flash-lite"
+      - key: MODEL_GROQ
+        value: "qwen/qwen3.8-27b"
+      - key: LLM_TIMEOUT_S
+        value: "15.0"
+      - key: HTTP_TIMEOUT_S
+        value: "10.0"
       - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_FALLBACK_KEY
         sync: false
       - key: GROQ_API_KEY
         sync: false
