@@ -59,10 +59,23 @@ export interface AgentOutputs {
 export interface WeatherOutput {
   source: string;
   wind_knots: number;
+  wind_speed_kt?: number;
   gusts_knots: number;
   rain_mm: number;
+  temp_c?: number | null;
+  apparent_temp_c?: number | null;
+  humidity?: number | null;
+  weather_code?: number | null;
+  weather_desc?: string | null;
+  wind_direction_deg?: number | null;
   lightning_risk: string;
-  forecast_hours: Array<{ hour: number; wind_knots: number; rain_mm: number }>;
+  forecast_hours: Array<{
+    hour: number;
+    wind_knots: number;
+    rain_mm: number;
+    temp_c?: number;
+    condition?: string;
+  }>;
   fetched_at: string;
 }
 
@@ -70,12 +83,35 @@ export interface OceanOutput {
   source: string;
   wave_height_m: number;
   wave_period_s: number;
+  wave_direction_deg?: number | null;
+  wind_wave_height_m?: number | null;
   swell_height_m: number;
   sst_c: number;
   current_knots: number;
-  tide_state: string;
-  chlorophyll_mg_m3: number;
+  tide_state: string | null;
+  chlorophyll_mg_m3: number | null;
+  note?: string;
   fetched_at: string;
+}
+
+export interface BriefingResponse {
+  summary?: string;
+  location: { lat: number; lon: number };
+  vessel_class: string;
+  mode: string;
+  generated_at: string;
+  weather?: WeatherOutput;
+  ocean?: OceanOutput;
+  hazard?: HazardOutput;
+  geospatial?: GeospatialOutput;
+  verdict?: VerdictData;
+  zone_index?: {
+    composite_score: number;
+    sub_indices: Record<string, number>;
+    penalty_breakdown: Record<string, number>;
+    transparency_notes: string[];
+  };
+  cached?: boolean;
 }
 
 export interface PFZOutput {
@@ -304,4 +340,55 @@ export async function checkHealth(): Promise<{
   } catch {
     return { ok: false, mock_mode: true, gemini_configured: false, groq_configured: false };
   }
+}
+
+/**
+ * Fetches the zero-LLM deterministic briefing from /api/briefing.
+ * Includes live Open-Meteo weather and ocean marine conditions.
+ */
+export async function fetchBriefing(
+  lat: number,
+  lon: number,
+  vesselClass: string = 'small_fishing_boat',
+  mode: 'mock' | 'real' = 'real',
+): Promise<BriefingResponse> {
+  const params = new URLSearchParams({
+    lat: lat.toString(),
+    lon: lon.toString(),
+    vessel_class: vesselClass,
+    mode,
+  });
+  const res = await fetch(`${ORCA_BASE_URL}/api/briefing?${params.toString()}`, {
+    headers: { 'Connection': 'keep-alive' },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to fetch briefing (${res.status}): ${err}`);
+  }
+  return res.json();
+}
+
+/**
+ * Fetches ranked PFZ fishing zones from /api/zones.
+ */
+export async function fetchRankedZones(
+  lat: number,
+  lon: number,
+  maxCount: number = 5,
+  mode: 'mock' | 'real' = 'real',
+): Promise<any> {
+  const params = new URLSearchParams({
+    lat: lat.toString(),
+    lon: lon.toString(),
+    max: maxCount.toString(),
+    mode,
+  });
+  const res = await fetch(`${ORCA_BASE_URL}/api/zones?${params.toString()}`, {
+    headers: { 'Connection': 'keep-alive' },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to fetch ranked zones (${res.status}): ${err}`);
+  }
+  return res.json();
 }

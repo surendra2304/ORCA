@@ -20,6 +20,8 @@ import { SeaConditionsData, MetricSummary } from '../types';
 import { harborCoords, pfzZones } from '../data/mockData';
 import { useOrcaSyncQuery } from '../hooks/useOrcaQuery';
 import { useLocation } from '../context/LocationContext';
+import { fetchBriefing } from '../services/orcaApi';
+import type { BriefingResponse } from '../services/orcaApi';
 
 interface DashboardScreenProps {
   seaConditions: SeaConditionsData;
@@ -36,7 +38,22 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 }) => {
   const { location } = useLocation();
 
-  // ── Live data from ORCA API ────────────────────────────────────────────────
+  // ── Instant live Open-Meteo marine & weather briefing ──────────────────────
+  const [briefing, setBriefing] = useState<BriefingResponse | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetchBriefing(location.lat, location.lon, 'small_fishing_boat', 'real')
+      .then((data) => {
+        if (active) setBriefing(data);
+      })
+      .catch((err) => console.warn('Dashboard briefing error:', err));
+    return () => {
+      active = false;
+    };
+  }, [location.lat, location.lon]);
+
+  // ── Optional full multi-agent sync query for deep assessment ──────────────
   const { loading: liveLoading, result: liveResult, fetch: fetchLive } = useOrcaSyncQuery();
 
   // Fetch real conditions on mount and whenever active location changes
@@ -49,17 +66,21 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   }, [fetchLive, location.lat, location.lon, location.name]);
 
   // Merge real data over fallback when available
-  const ocean = liveResult?.agent_outputs?.ocean;
-  const weather = liveResult?.agent_outputs?.weather;
-  const verdict = liveResult?.verdict;
+  const ocean = liveResult?.agent_outputs?.ocean || briefing?.ocean;
+  const weather = liveResult?.agent_outputs?.weather || briefing?.weather;
+  const verdict = liveResult?.verdict || briefing?.verdict;
+
+  const windKt = weather?.wind_knots ?? weather?.wind_speed_kt;
+  const windSpeedKmH = windKt != null ? Math.round(windKt * 1.852) : fallbackConditions.windSpeed;
+  const sst = ocean?.sst_c ?? fallbackConditions.seaTemp;
 
   const seaConditions: SeaConditionsData = {
-    seaTemp: ocean?.sst_c ?? fallbackConditions.seaTemp,
-    tempStatus: ocean ? (ocean.sst_c > 29 ? 'Warm Front' : ocean.sst_c < 26 ? 'Cool Upwelling' : 'Normal Front') : fallbackConditions.tempStatus,
-    heatStress: ocean ? (ocean.sst_c > 30 ? 'High' : ocean.sst_c > 28 ? 'Moderate' : 'Low') : fallbackConditions.heatStress,
-    windSpeed: weather ? Math.round(weather.wind_speed_kt * 1.852) : fallbackConditions.windSpeed, // knots → km/h
-    waveHeight: ocean?.wave_height_m ?? fallbackConditions.waveHeight,
-    seaState: ocean
+    seaTemp: sst != null ? Number(sst.toFixed(1)) : fallbackConditions.seaTemp,
+    tempStatus: ocean ? (sst > 29 ? 'Warm Front' : sst < 26 ? 'Cool Upwelling' : 'Normal Front') : fallbackConditions.tempStatus,
+    heatStress: ocean ? (sst > 30 ? 'High' : sst > 28 ? 'Moderate' : 'Low') : fallbackConditions.heatStress,
+    windSpeed: windSpeedKmH,
+    waveHeight: ocean?.wave_height_m != null ? Number(ocean.wave_height_m.toFixed(1)) : fallbackConditions.waveHeight,
+    seaState: ocean?.wave_height_m != null
       ? ocean.wave_height_m < 0.5 ? 'Calm' : ocean.wave_height_m < 1.25 ? 'Slight' : ocean.wave_height_m < 2.5 ? 'Moderate' : 'Rough'
       : fallbackConditions.seaState,
     tide: ocean?.tide_m ?? fallbackConditions.tide,
@@ -71,7 +92,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       : fallbackConditions.thermalFrontStatus,
     thermalFrontNote: liveResult?.final_answer
       ? liveResult.final_answer.slice(0, 120) + '...'
-      : fallbackConditions.thermalFrontNote,
+      : (weather?.weather_desc ? `${weather.weather_desc}, wind ${windKt != null ? Math.round(windKt) : '--'} kn` : fallbackConditions.thermalFrontNote),
   };
   // ── End live data ──────────────────────────────────────────────────────────
 

@@ -248,7 +248,6 @@ async def get_ocean(lat: float, lon: float) -> Dict[str, Any]:
     first_sst = next((float(t) for t in ssts if t is not None), None)
     raw_current = next((float(c) for c in currents if c is not None), None)
     first_current = kmh_to_knots(raw_current)
-
     return {
         "source": "open-meteo:marine",
         "wave_height_m": first_wave,

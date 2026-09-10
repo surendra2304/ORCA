@@ -23,11 +23,17 @@ import {
   ChevronUp,
   Sun,
   RefreshCw,
+  CloudRain,
+  CloudLightning,
+  Thermometer,
+  Droplets,
+  Waves,
+  Compass,
 } from 'lucide-react';
 import { useOrcaQuery } from '../hooks/useOrcaQuery';
 import type { VerdictData, OrcaTraceStep } from '../hooks/useOrcaQuery';
-import { sendQuerySync } from '../services/orcaApi';
-import type { AgentOutputs } from '../services/orcaApi';
+import { sendQuerySync, fetchBriefing } from '../services/orcaApi';
+import type { AgentOutputs, BriefingResponse } from '../services/orcaApi';
 import { translations, SupportedLanguage } from '../i18n/translations';
 import { useLocation } from '../context/LocationContext';
 
@@ -323,6 +329,26 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     }>
   >([]);
   const [showHistory, setShowHistory] = useState(false);
+
+  // ── Live Open-Meteo Marine & Weather Briefing ─────────────────────────────
+  const [briefing, setBriefing] = useState<BriefingResponse | null>(null);
+  const [briefingLoading, setBriefingLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    let active = true;
+    setBriefingLoading(true);
+    fetchBriefing(location.lat, location.lon, 'small_fishing_boat', 'real')
+      .then((data) => {
+        if (active) setBriefing(data);
+      })
+      .catch((err) => console.warn('Home briefing fetch error:', err))
+      .finally(() => {
+        if (active) setBriefingLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [location.lat, location.lon]);
 
   // Refs for speech recognition & silence detection
   const recognitionRef = useRef<any>(null);
@@ -824,19 +850,28 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     [inputText, currentLanguage, orcaChat]
   );
 
-  // ── Evaluation criteria (uses latest data from voice or chat) ─────────────
+  // ── Evaluation criteria (uses live briefing or latest data from voice/chat) ─────────────
   const activeAgentOutputs = orcaChat.agentOutputs;
-  const weatherOut = activeAgentOutputs?.weather;
-  const oceanOut = activeAgentOutputs?.ocean;
-  const verdict = currentTurn?.verdict || orcaChat.verdict;
+  const weatherOut = activeAgentOutputs?.weather || briefing?.weather;
+  const oceanOut = activeAgentOutputs?.ocean || briefing?.ocean;
+  const verdict = currentTurn?.verdict || orcaChat.verdict || briefing?.verdict;
 
+  const waveH = oceanOut?.wave_height_m;
+  const sstC = oceanOut?.sst_c;
   const seaConditionLabel = oceanOut
-    ? `${t.metrics.waveHeight} ${oceanOut.wave_height_m.toFixed(1)}${t.metrics.meters}, SST ${oceanOut.sst_c.toFixed(1)}${t.metrics.celsius}`
-    : t.common.loading;
-  const safetyLabel = verdict ? `${verdict.label}: ${verdict.summary}` : t.voice.processingDesc;
+    ? `${t.metrics.waveHeight} ${waveH != null ? waveH.toFixed(1) : '--'}${t.metrics.meters}, SST ${sstC != null ? sstC.toFixed(1) : '--'}${t.metrics.celsius}${oceanOut.current_knots != null ? `, ${oceanOut.current_knots.toFixed(1)} kn` : ''}`
+    : (briefingLoading ? t.common.loading : t.common.loading);
+
+  const safetyLabel = verdict
+    ? `${verdict.label}: ${verdict.summary || (verdict as any).reason || (verdict.label === 'GO' ? t.metrics.safeToSail : verdict.label === 'CAUTION' ? t.metrics.cautionAdvised : t.metrics.dangerStayPort)}`
+    : (briefingLoading ? t.voice.processingDesc : t.voice.processingDesc);
+
+  const curTemp = weatherOut?.temp_c ?? weatherOut?.forecast_hours?.[0]?.temp_c;
+  const curDesc = weatherOut?.weather_desc ?? weatherOut?.forecast_hours?.[0]?.condition;
+  const windKt = weatherOut?.wind_knots ?? weatherOut?.wind_speed_kt ?? weatherOut?.forecast_hours?.[0]?.wind_knots;
   const weatherLabel = weatherOut
-    ? `${t.metrics.windSpeed} ${weatherOut.wind_speed_kt.toFixed(0)} ${t.metrics.knots}, ${weatherOut.lightning_risk} lightning`
-    : t.common.loading;
+    ? `${curTemp != null ? `${curTemp.toFixed(0)}°C, ` : ''}${curDesc ? `${curDesc}, ` : ''}${t.metrics.windSpeed} ${windKt != null ? windKt.toFixed(0) : '--'} ${t.metrics.knots}${weatherOut.gusts_knots != null ? ` (gusts ${weatherOut.gusts_knots.toFixed(0)} kn)` : ''}${weatherOut.lightning_risk ? `, ${weatherOut.lightning_risk} lightning` : ''}`
+    : (briefingLoading ? t.common.loading : t.common.loading);
 
   return (
     <div className="space-y-6 pb-12" data-purpose="cards-content">
@@ -1391,6 +1426,140 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         </div>
       </section>
+
+      {/* 4. Open-Meteo Hourly Forecast & Marine Telemetry Card */}
+      {weatherOut?.forecast_hours && weatherOut.forecast_hours.length > 0 && (
+        <section
+          className="bg-white rounded-[22px] border border-[#e5ecf4] p-6 sm:p-7 shadow-xs space-y-4"
+          data-purpose="open-meteo-hourly-section"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                <Cloud className="w-5 h-5 stroke-[2]" />
+              </span>
+              <div>
+                <h3 className="text-[15px] font-bold text-[#0b2545]">
+                  Open-Meteo Marine & Hourly Forecast
+                </h3>
+                <p className="text-[11.5px] text-[#64748b]">
+                  {location.name} • 24-Hour Weather & Sea Predictions
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                Open-Meteo Live API
+              </span>
+              {weatherOut.fetched_at && (
+                <span className="text-[10.5px] text-slate-400">
+                  Updated {new Date(weatherOut.fetched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Marine Stats Row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100">
+              <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-semibold mb-1">
+                <Thermometer className="w-3.5 h-3.5 text-amber-500" /> Air Temp
+              </div>
+              <div className="text-[16px] font-bold text-slate-900">
+                {weatherOut.temp_c != null ? `${weatherOut.temp_c.toFixed(1)}°C` : '--'}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {weatherOut.weather_desc || 'Fair'}
+              </div>
+            </div>
+
+            <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100">
+              <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-semibold mb-1">
+                <Wind className="w-3.5 h-3.5 text-blue-500" /> Wind & Gusts
+              </div>
+              <div className="text-[16px] font-bold text-slate-900">
+                {windKt != null ? `${windKt.toFixed(0)} kn` : '--'}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                Gusts: {weatherOut.gusts_knots != null ? `${weatherOut.gusts_knots.toFixed(0)} kn` : '--'}
+              </div>
+            </div>
+
+            <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100">
+              <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-semibold mb-1">
+                <Waves className="w-3.5 h-3.5 text-cyan-600" /> Waves & Swell
+              </div>
+              <div className="text-[16px] font-bold text-slate-900">
+                {waveH != null ? `${waveH.toFixed(1)} m` : '--'}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                Swell: {oceanOut?.swell_height_m != null ? `${oceanOut.swell_height_m.toFixed(1)} m` : '--'}
+              </div>
+            </div>
+
+            <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100">
+              <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-semibold mb-1">
+                <Droplets className="w-3.5 h-3.5 text-indigo-500" /> Rain & SST
+              </div>
+              <div className="text-[16px] font-bold text-slate-900">
+                {weatherOut.rain_mm != null ? `${weatherOut.rain_mm.toFixed(1)} mm` : '0 mm'}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                SST: {sstC != null ? `${sstC.toFixed(1)}°C` : '--'}
+              </div>
+            </div>
+          </div>
+
+          {/* 24-Hour Hourly Timeline */}
+          <div>
+            <div className="text-[12px] font-bold text-slate-700 mb-2 flex items-center justify-between">
+              <span>Hourly Forecast Timeline (24 Hours)</span>
+              <span className="text-[11px] text-slate-400 font-normal">Scroll horizontally →</span>
+            </div>
+            <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
+              {weatherOut.forecast_hours.map((h, i) => {
+                const hourFormatted = `${h.hour % 12 === 0 ? 12 : h.hour % 12} ${h.hour >= 12 ? 'PM' : 'AM'}`;
+                const isRainy = (h.rain_mm || 0) > 0.2;
+                const isWindy = (h.wind_knots || 0) >= 15;
+                return (
+                  <div
+                    key={i}
+                    className={`min-w-[84px] rounded-xl p-2.5 border text-center flex flex-col items-center justify-between shrink-0 transition-all ${
+                      isWindy
+                        ? 'bg-amber-50/60 border-amber-200'
+                        : isRainy
+                        ? 'bg-blue-50/60 border-blue-200'
+                        : 'bg-slate-50/50 border-slate-100'
+                    }`}
+                  >
+                    <span className="text-[11px] font-bold text-slate-600 mb-1">{hourFormatted}</span>
+                    <div className="my-1">
+                      {h.condition?.toLowerCase().includes('thunder') ? (
+                        <CloudLightning className="w-5 h-5 text-amber-500" />
+                      ) : isRainy ? (
+                        <CloudRain className="w-5 h-5 text-blue-500" />
+                      ) : (
+                        <Sun className="w-5 h-5 text-amber-400" />
+                      )}
+                    </div>
+                    <span className="text-[12px] font-extrabold text-slate-900 mt-0.5">
+                      {h.temp_c != null ? `${Math.round(h.temp_c)}°` : '--'}
+                    </span>
+                    <div className="text-[10px] text-slate-500 font-semibold mt-1">
+                      💨 {Math.round(h.wind_knots || 0)} kn
+                    </div>
+                    {isRainy && (
+                      <div className="text-[9.5px] font-bold text-blue-600 mt-0.5">
+                        💧 {h.rain_mm.toFixed(1)}mm
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 };
