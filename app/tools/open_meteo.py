@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import settings
 from app.tools.http import FetchError, fetch_json
