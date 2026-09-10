@@ -154,6 +154,7 @@ async def run_dashboard(
     lon: float,
     vessel_class: str = "small_fishing_boat",
     mode: str = "mock",
+    force_refresh: bool = False,
 ) -> Dict[str, Any]:
     """
     DETERMINISTIC DASHBOARD PIPELINE (Zero LLM).
@@ -167,7 +168,7 @@ async def run_dashboard(
     now = time.time()
 
     # 1. Check TTL cache
-    if cache_key in _DASHBOARD_CACHE:
+    if not force_refresh and cache_key in _DASHBOARD_CACHE:
         cached_time, cached_data = _DASHBOARD_CACHE[cache_key]
         if now - cached_time < settings.DASHBOARD_CACHE_TTL_S:
             logger.info("Dashboard cache hit for %s", cache_key)

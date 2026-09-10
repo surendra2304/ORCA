@@ -43,13 +43,26 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
   useEffect(() => {
     let active = true;
-    fetchBriefing(location.lat, location.lon, 'small_fishing_boat', 'real')
-      .then((data) => {
-        if (active) setBriefing(data);
-      })
-      .catch((err) => console.warn('Dashboard briefing error:', err));
+    const update = (force: boolean = false) => {
+      fetchBriefing(location.lat, location.lon, 'small_fishing_boat', 'real', force)
+        .then((data) => {
+          if (active) setBriefing(data);
+        })
+        .catch((err) => console.warn('Dashboard briefing error:', err));
+    };
+
+    update();
+    const interval = setInterval(() => update(false), 180000); // 3 minutes auto-refresh
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') update(false);
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       active = false;
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [location.lat, location.lon]);
 

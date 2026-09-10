@@ -351,6 +351,7 @@ export async function fetchBriefing(
   lon: number,
   vesselClass: string = 'small_fishing_boat',
   mode: 'mock' | 'real' = 'real',
+  forceRefresh: boolean = false,
 ): Promise<BriefingResponse> {
   const params = new URLSearchParams({
     lat: lat.toString(),
@@ -358,6 +359,9 @@ export async function fetchBriefing(
     vessel_class: vesselClass,
     mode,
   });
+  if (forceRefresh) {
+    params.set('refresh', 'true');
+  }
   const res = await fetch(`${ORCA_BASE_URL}/api/briefing?${params.toString()}`, {
     headers: { 'Connection': 'keep-alive' },
   });

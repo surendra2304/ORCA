@@ -109,6 +109,7 @@ async def get_briefing(
     lon: float = Query(..., description="Longitude (-180 to 180)"),
     vessel_class: str = Query("small_fishing_boat", description="Vessel class"),
     mode: Optional[str] = Query(None, description="mock | real"),
+    refresh: bool = Query(False, description="Bypass cache and force refresh"),
 ):
     """
     The Home-tab briefing endpoint.
@@ -124,7 +125,7 @@ async def get_briefing(
     effective_mode = get_effective_mode(mode)
 
     try:
-        data = await run_dashboard(lat, lon, vessel_class, effective_mode)
+        data = await run_dashboard(lat, lon, vessel_class, effective_mode, force_refresh=refresh)
         return data
     except Exception as exc:
         logger.error("run_dashboard error: %s", exc)

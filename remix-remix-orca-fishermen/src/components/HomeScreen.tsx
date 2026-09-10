@@ -333,22 +333,42 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   // ── Live Open-Meteo Marine & Weather Briefing ─────────────────────────────
   const [briefing, setBriefing] = useState<BriefingResponse | null>(null);
   const [briefingLoading, setBriefingLoading] = useState<boolean>(false);
+  const [lastBriefingTime, setLastBriefingTime] = useState<Date | null>(null);
 
-  useEffect(() => {
-    let active = true;
+  const loadBriefing = useCallback((forceRefresh: boolean = false) => {
     setBriefingLoading(true);
-    fetchBriefing(location.lat, location.lon, 'small_fishing_boat', 'real')
+    fetchBriefing(location.lat, location.lon, 'small_fishing_boat', 'real', forceRefresh)
       .then((data) => {
-        if (active) setBriefing(data);
+        setBriefing(data);
+        setLastBriefingTime(new Date());
       })
       .catch((err) => console.warn('Home briefing fetch error:', err))
       .finally(() => {
-        if (active) setBriefingLoading(false);
+        setBriefingLoading(false);
       });
-    return () => {
-      active = false;
-    };
   }, [location.lat, location.lon]);
+
+  useEffect(() => {
+    loadBriefing(false);
+
+    // Auto-update every 3 minutes (180,000 ms) automatically
+    const intervalId = setInterval(() => {
+      loadBriefing(false);
+    }, 180000);
+
+    // Auto-update when tab gains focus / visibility
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadBriefing(false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [loadBriefing]);
 
   // Refs for speech recognition & silence detection
   const recognitionRef = useRef<any>(null);
@@ -1448,14 +1468,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                Open-Meteo Live API
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live API
               </span>
-              {weatherOut.fetched_at && (
-                <span className="text-[10.5px] text-slate-400">
-                  Updated {new Date(weatherOut.fetched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </span>
-              )}
+              <span className="text-[10.5px] text-slate-400">
+                {lastBriefingTime
+                  ? `Updated ${lastBriefingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : weatherOut.fetched_at
+                  ? `Updated ${new Date(weatherOut.fetched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : 'Realtime'}
+              </span>
+              <button
+                onClick={() => loadBriefing(true)}
+                disabled={briefingLoading}
+                title="Force refresh real-time weather & marine data"
+                className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all disabled:opacity-40"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${briefingLoading ? 'animate-spin text-blue-600' : ''}`} />
+              </button>
             </div>
           </div>
 
