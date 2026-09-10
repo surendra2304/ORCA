@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # Multi-stage Dockerfile for ORCA Marine Intelligence
 # Combines React 19 Frontend + FastAPI Multi-Agent Backend on a single port
 # ==============================================================================
@@ -38,9 +38,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy backend application code and data directories
+# Copy backend application code, rules, and data directories
 COPY app/ ./app/
 COPY data/ ./data/
+COPY rules/ ./rules/
 
 # Copy compiled frontend from Stage 1 into /app/dist
 COPY --from=frontend-builder /app/dist ./dist
