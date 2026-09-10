@@ -19,6 +19,7 @@ import {
 import { SeaConditionsData, MetricSummary } from '../types';
 import { harborCoords, pfzZones } from '../data/mockData';
 import { useOrcaSyncQuery } from '../hooks/useOrcaQuery';
+import { useLocation } from '../context/LocationContext';
 
 interface DashboardScreenProps {
   seaConditions: SeaConditionsData;
@@ -33,17 +34,19 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onOpenAlertsModal,
   onSelectZone,
 }) => {
+  const { location } = useLocation();
+
   // ── Live data from ORCA API ────────────────────────────────────────────────
   const { loading: liveLoading, result: liveResult, fetch: fetchLive } = useOrcaSyncQuery();
 
-  // Fetch real conditions once on mount
+  // Fetch real conditions on mount and whenever active location changes
   useEffect(() => {
     fetchLive(
-      'What are the current sea conditions, wave height, wind speed, SST and safety status near Kakinada coast? Include ocean and weather data.',
-      'en'
+      `What are the current sea conditions, wave height, wind speed, SST and safety status near ${location.name}? Include ocean and weather data.`,
+      'en',
+      { lat: location.lat, lon: location.lon, name: location.name }
     );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchLive, location.lat, location.lon, location.name]);
 
   // Merge real data over fallback when available
   const ocean = liveResult?.agent_outputs?.ocean;
@@ -234,7 +237,8 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     thermalGroup.addTo(map);
 
     // Trajectory navigation line from Harbor to PFZ-03
-    L.polyline([harborCoords, pfz03Coords], {
+    const currentHarborCoords: [number, number] = [location.lat, location.lon];
+    L.polyline([currentHarborCoords, pfz03Coords], {
       color: '#2563eb',
       weight: 2.5,
       opacity: 0.85,
@@ -243,8 +247,8 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
     }).addTo(map);
 
     // Midpoint Distance Badge
-    const midLat = (harborCoords[0] + pfz03Coords[0]) / 2;
-    const midLng = (harborCoords[1] + pfz03Coords[1]) / 2;
+    const midLat = (currentHarborCoords[0] + pfz03Coords[0]) / 2;
+    const midLng = (currentHarborCoords[1] + pfz03Coords[1]) / 2;
     const distanceBadgeIcon = L.divIcon({
       className: '',
       html: `
@@ -273,11 +277,11 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       iconSize: [32, 32],
       iconAnchor: [16, 16],
     });
-    const harborMarker = L.marker(harborCoords, { icon: harborIcon }).addTo(map);
+    const harborMarker = L.marker(currentHarborCoords, { icon: harborIcon }).addTo(map);
     harborMarker.bindPopup(
       `
       <div class="p-1 text-xs">
-        <p class="font-bold text-slate-900">Kakinada Fishing Harbor</p>
+        <p class="font-bold text-slate-900">${location.name}</p>
         <p class="text-[11px] text-slate-500 mt-0.5">Base departure port • Radar active</p>
       </div>
     `,

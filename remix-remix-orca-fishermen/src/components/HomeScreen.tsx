@@ -29,6 +29,7 @@ import type { VerdictData, OrcaTraceStep } from '../hooks/useOrcaQuery';
 import { sendQuerySync } from '../services/orcaApi';
 import type { AgentOutputs } from '../services/orcaApi';
 import { translations, SupportedLanguage } from '../i18n/translations';
+import { useLocation } from '../context/LocationContext';
 
 // SpeechRecognition types for browsers that support it
 interface SpeechRecognitionEvent extends Event {
@@ -270,6 +271,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onLanguageChange,
 }) => {
   const t = translations[currentLanguage] || translations.en;
+  const { location } = useLocation();
 
   // ── Separate Query Hook for Text Chat Bot ─────────────────────────────────
   const chatSessionIdRef = useRef<string | null>(null);
@@ -533,9 +535,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           language: detectedLang,
           session_id: voiceSessionIdRef.current || undefined,
           mode: 'real',
-          lat: 17.6868,
-          lon: 83.2185,
-          location_name: 'Visakhapatnam Harbor',
+          lat: location.lat,
+          lon: location.lon,
+          location_name: location.name,
         });
 
         if (resp.session_id) {
@@ -584,7 +586,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         voiceProcessingRef.current = false;
       }
     },
-    [currentLanguage, onLanguageChange, speakText]
+    [currentLanguage, onLanguageChange, speakText, location]
   );
 
   // ── Start listening for the user's voice ──────────────────────────────────
@@ -850,6 +852,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <span className="flex items-center gap-1 text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
               <Sparkles className="w-3 h-3 text-blue-600" />
               {t.voice.badge}
+            </span>
+            <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 bg-slate-100/90 border border-slate-200/80 px-2.5 py-0.5 rounded-full">
+              <span className={`w-1.5 h-1.5 rounded-full ${location.isGPS ? 'bg-emerald-500 animate-ping' : 'bg-blue-500'}`} />
+              📍 {location.name}
             </span>
             {voiceSessionActive && (
               <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
@@ -1120,10 +1126,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       >
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-[17px] font-bold text-[#0b2545]">
-              {t.chat.title}
-              <span className="ml-2 text-[11px] font-normal text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+            <h2 className="text-[17px] font-bold text-[#0b2545] flex items-center gap-2 flex-wrap">
+              <span>{t.chat.title}</span>
+              <span className="text-[11px] font-normal text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
                 ● Live AI
+              </span>
+              <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 bg-slate-100/90 border border-slate-200/80 px-2.5 py-0.5 rounded-full">
+                <span className={`w-1.5 h-1.5 rounded-full ${location.isGPS ? 'bg-emerald-500 animate-ping' : 'bg-blue-500'}`} />
+                📍 {location.name}
               </span>
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">{t.chat.subtitle}</p>
@@ -1331,7 +1341,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               <p className="text-[12px] text-[#64748b] font-medium leading-tight mt-0.5">
                 {activeAgentOutputs?.geospatial
                   ? `${activeAgentOutputs.geospatial.nearest_port_name} — ${activeAgentOutputs.geospatial.nearest_port_km.toFixed(0)}${t.metrics.km}`
-                  : 'Kakinada Harbor (16.9891° N, 82.2475° E)'}
+                  : `${location.name} (${location.lat.toFixed(4)}° N, ${location.lon.toFixed(4)}° E)`}
               </p>
             </div>
           </div>

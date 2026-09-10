@@ -332,6 +332,38 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             },
         }
 
+    _COASTAL_LOC_MAP = {
+        "visakhapatnam": (17.6868, 83.2185, "Visakhapatnam Harbor"),
+        "vizag": (17.6868, 83.2185, "Visakhapatnam Harbor"),
+        "విశాఖపట్నం": (17.6868, 83.2185, "Visakhapatnam Harbor"),
+        "వైజాగ్": (17.6868, 83.2185, "Visakhapatnam Harbor"),
+        "kakinada": (16.9891, 82.2475, "Kakinada Port"),
+        "కాకినాడ": (16.9891, 82.2475, "Kakinada Port"),
+        "bhimavaram": (16.5449, 81.5212, "Bhimavaram"),
+        "భీమవరం": (16.5449, 81.5212, "Bhimavaram"),
+        "antarvedi": (16.3268, 81.7289, "Antarvedi Coast"),
+        "అంతర్వేది": (16.3268, 81.7289, "Antarvedi Coast"),
+        "machilipatnam": (16.1875, 81.1389, "Machilipatnam Port"),
+        "మచిలీపట్నం": (16.1875, 81.1389, "Machilipatnam Port"),
+        "nizampatnam": (15.9062, 80.6682, "Nizampatnam Port"),
+        "నిజాంపట్నం": (15.9062, 80.6682, "Nizampatnam Port"),
+        "krishnapatnam": (14.2500, 80.1167, "Krishnapatnam Port"),
+        "chennai": (13.0827, 80.2707, "Chennai Port"),
+        "చెన్నై": (13.0827, 80.2707, "Chennai Port"),
+        "mumbai": (18.9438, 72.8354, "Mumbai Port"),
+        "मुम्बई": (18.9438, 72.8354, "Mumbai Port"),
+        "kolkata": (22.5726, 88.3639, "Kolkata Port"),
+        "কলকাতা": (22.5726, 88.3639, "Kolkata Port"),
+        "kochi": (9.9312, 76.2673, "Cochin Port"),
+        "cochin": (9.9312, 76.2673, "Cochin Port"),
+        "puri": (19.8135, 85.8312, "Puri"),
+        "paradip": (20.3165, 86.6114, "Paradip Port"),
+        "mangalore": (12.9141, 74.8560, "Mangalore Port"),
+        "mangaluru": (12.9141, 74.8560, "Mangalore Port"),
+        "tuticorin": (8.7642, 78.1348, "VO Chidambaranar Port (Tuticorin)"),
+        "puducherry": (11.9416, 79.8083, "Puducherry"),
+    }
+
     # ── Instant Safety Check Fast-Path ────────────────────────────────────────
     # Common questions like "Can I go to sea now?", "ఇప్పుడు నేను సముద్రంలోకి వెళ్లొచ్చా?", "Is it safe to fish?"
     # bypass the slow LLM planner and immediately run weather, ocean, and hazard agents in parallel!
@@ -356,9 +388,21 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             lang = "bn"
 
         entities = dict(state.get("entities") or {})
-        lat = entities.get("lat") or 17.6868
-        lon = entities.get("lon") or 83.2185
-        loc_name = entities.get("location_name") or "Visakhapatnam Harbor"
+        lat = entities.get("lat")
+        lon = entities.get("lon")
+        loc_name = entities.get("location_name")
+
+        for k_name, (k_lat, k_lon, k_disp) in _COASTAL_LOC_MAP.items():
+            if re.search(r"\b" + re.escape(k_name) + r"\b", clean_q, re.I) or k_name in query:
+                lat = k_lat
+                lon = k_lon
+                loc_name = k_disp
+                break
+
+        if lat is None or lon is None:
+            lat = 17.6868
+            lon = 83.2185
+            loc_name = loc_name or "Visakhapatnam Harbor"
 
         await collector.emit(
             "plan_created",
@@ -421,34 +465,7 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
         lon = entities.get("lon")
         loc_name = entities.get("location_name")
 
-        # Check for named coastal locations in query
-        _LOC_MAP = {
-            "visakhapatnam": (17.6868, 83.2185, "Visakhapatnam Harbor"),
-            "vizag": (17.6868, 83.2185, "Visakhapatnam Harbor"),
-            "విశాఖపట్నం": (17.6868, 83.2185, "Visakhapatnam Harbor"),
-            "వైజాగ్": (17.6868, 83.2185, "Visakhapatnam Harbor"),
-            "kakinada": (16.9891, 82.2475, "Kakinada Port"),
-            "కాకినాడ": (16.9891, 82.2475, "Kakinada Port"),
-            "bhimavaram": (16.5449, 81.5212, "Bhimavaram"),
-            "భీమవరం": (16.5449, 81.5212, "Bhimavaram"),
-            "machilipatnam": (16.1875, 81.1389, "Machilipatnam Port"),
-            "మచిలీపట్నం": (16.1875, 81.1389, "Machilipatnam Port"),
-            "chennai": (13.0827, 80.2707, "Chennai Port"),
-            "చెన్నై": (13.0827, 80.2707, "Chennai Port"),
-            "mumbai": (18.9438, 72.8354, "Mumbai Port"),
-            "मुम्बई": (18.9438, 72.8354, "Mumbai Port"),
-            "kolkata": (22.5726, 88.3639, "Kolkata Port"),
-            "কলকাতা": (22.5726, 88.3639, "Kolkata Port"),
-            "kochi": (9.9312, 76.2673, "Cochin Port"),
-            "cochin": (9.9312, 76.2673, "Cochin Port"),
-            "puri": (19.8135, 85.8312, "Puri"),
-            "paradip": (20.3165, 86.6114, "Paradip Port"),
-            "mangalore": (12.9141, 74.8560, "Mangalore Port"),
-            "mangaluru": (12.9141, 74.8560, "Mangalore Port"),
-            "tuticorin": (8.7642, 78.1348, "VO Chidambaranar Port (Tuticorin)"),
-            "puducherry": (11.9416, 79.8083, "Puducherry"),
-        }
-        for k_name, (k_lat, k_lon, k_disp) in _LOC_MAP.items():
+        for k_name, (k_lat, k_lon, k_disp) in _COASTAL_LOC_MAP.items():
             if re.search(r"\b" + re.escape(k_name) + r"\b", clean_q, re.I) or k_name in query:
                 lat = k_lat
                 lon = k_lon

@@ -1,7 +1,19 @@
 import React, { useState } from 'react';
 import { AppScreen, UserProfile } from '../types';
-import { MapPin, Bell, Menu, Settings as SettingsIcon, LogOut, Globe, Check } from 'lucide-react';
+import {
+  MapPin,
+  Bell,
+  Menu,
+  Settings as SettingsIcon,
+  LogOut,
+  Globe,
+  Check,
+  LocateFixed,
+  Loader2,
+  ChevronDown,
+} from 'lucide-react';
 import { translations, SupportedLanguage } from '../i18n/translations';
+import { useLocation } from '../context/LocationContext';
 
 interface HeaderProps {
   currentScreen: AppScreen;
@@ -26,8 +38,17 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigate,
   onLogout,
 }) => {
+  const {
+    location,
+    loading: locationLoading,
+    permission,
+    requestLocation,
+    selectPort,
+    availablePorts,
+  } = useLocation();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
+  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
 
   const t = translations[currentLanguage] || translations.en;
 
@@ -161,10 +182,129 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Location Indicator */}
-        <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200/80 rounded-full text-[#0b2545] font-semibold text-[12.5px] sm:text-[13.5px] shadow-2xs">
-          <MapPin className="w-3.5 h-3.5 text-[#0d6efd] fill-[#0d6efd]/20" />
-          <span className="truncate max-w-[110px] sm:max-w-none">{userProfile.location}</span>
+        {/* Live GPS / Location Selector */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setLocationDropdownOpen(!locationDropdownOpen)}
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full border text-[12px] sm:text-[13px] font-semibold transition-all shadow-2xs cursor-pointer ${
+              location.isGPS
+                ? 'bg-emerald-50/90 border-emerald-300/80 text-emerald-950 hover:bg-emerald-100/80'
+                : 'bg-slate-50 hover:bg-slate-100 border-slate-200/90 text-[#0b2545]'
+            }`}
+            title="Click to view or change port / GPS location"
+            aria-label="Location options"
+          >
+            {locationLoading ? (
+              <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+            ) : location.isGPS ? (
+              <span className="relative flex h-2 w-2 mr-0.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+            ) : (
+              <MapPin className="w-3.5 h-3.5 text-[#0d6efd] fill-[#0d6efd]/20" />
+            )}
+
+            <span className="truncate max-w-[85px] sm:max-w-[150px] font-bold">
+              {location.name}
+            </span>
+
+            {location.isGPS && (
+              <span className="hidden sm:inline-block px-1.5 py-0.2 rounded text-[9.5px] uppercase font-extrabold bg-emerald-200/90 text-emerald-900">
+                GPS
+              </span>
+            )}
+            <ChevronDown className="w-3.5 h-3.5 text-slate-500 opacity-70" />
+          </button>
+
+          {/* Location Picker Dropdown */}
+          {locationDropdownOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setLocationDropdownOpen(false)}
+              />
+              <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-40 text-xs font-semibold overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                <div className="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/40">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                      Active Coordinates
+                    </p>
+                    <p className="text-[13px] font-bold text-slate-900">{location.name}</p>
+                    <p className="text-[10.5px] text-slate-500 font-medium">
+                      {location.lat.toFixed(4)}° N, {location.lon.toFixed(4)}° E
+                      {location.accuracy ? ` (±${location.accuracy}m)` : ''}
+                    </p>
+                  </div>
+                  {location.isGPS ? (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200">
+                      Live GPS
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold border border-slate-200">
+                      Selected Port
+                    </span>
+                  )}
+                </div>
+
+                {/* GPS Refresh button */}
+                <div className="p-2 border-b border-slate-100 bg-slate-50/60">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await requestLocation();
+                      setLocationDropdownOpen(false);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#0d6efd] hover:bg-blue-700 text-white rounded-xl font-bold transition-all shadow-xs cursor-pointer text-xs"
+                  >
+                    <LocateFixed className="w-3.5 h-3.5" />
+                    <span>Detect My Exact GPS Location</span>
+                  </button>
+                  {permission === 'denied' && (
+                    <p className="text-[10.5px] text-amber-700 mt-1.5 text-center font-normal">
+                      GPS permission blocked in browser. Select a port below.
+                    </p>
+                  )}
+                </div>
+
+                {/* Coastal Ports List */}
+                <div className="px-3.5 py-1.5 text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                  Major Coastal Fishing Hubs
+                </div>
+                <div className="max-h-60 overflow-y-auto px-1">
+                  {availablePorts.map((port) => {
+                    const isSelected =
+                      Math.abs(port.lat - location.lat) < 0.01 &&
+                      Math.abs(port.lon - location.lon) < 0.01;
+                    return (
+                      <button
+                        key={port.id}
+                        type="button"
+                        onClick={() => {
+                          selectPort(port);
+                          setLocationDropdownOpen(false);
+                        }}
+                        className={`w-full px-3 py-2 rounded-xl text-left flex items-center justify-between transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-blue-50 text-blue-700 font-bold'
+                            : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div>
+                          <p className="text-[12.5px] font-semibold">{port.name}</p>
+                          <p className="text-[10.5px] text-slate-400 font-normal">
+                            {port.region} • {port.lat.toFixed(2)}°N, {port.lon.toFixed(2)}°E
+                          </p>
+                        </div>
+                        {isSelected && <Check className="w-4 h-4 text-blue-600 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Notification Bell with Badge */}

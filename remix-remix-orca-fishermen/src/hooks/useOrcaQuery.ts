@@ -3,6 +3,7 @@
  * and streaming real-time trace events back to the UI.
  */
 import React, { useState, useCallback, useRef } from 'react';
+import { useLocation } from './useUserLocation';
 import {
   sendQuery,
   sendQuerySync,
@@ -105,12 +106,21 @@ function envelopeToTraceStep(env: SSEEnvelope): OrcaTraceStep | null {
  * Async streaming mode — sends query, gets run_id, subscribes to SSE stream.
  * Best for chat UI where you want to show live progress.
  */
-export function useOrcaQuery(sessionIdRef?: React.MutableRefObject<string | null>) {
+export function useOrcaQuery(
+  sessionIdRef?: React.MutableRefObject<string | null>,
+  overrideLocation?: { lat?: number; lon?: number; name?: string },
+) {
+  const { location } = useLocation();
   const [state, setState] = useState<OrcaQueryState>(initialState);
   const cleanupRef = useRef<(() => void) | null>(null);
 
   const ask = useCallback(
-    async (text: string, language = 'en', vesselClass = 'small_fishing_boat') => {
+    async (
+      text: string,
+      language = 'en',
+      vesselClass = 'small_fishing_boat',
+      customLoc?: { lat?: number; lon?: number; name?: string },
+    ) => {
       // Cancel any in-progress stream
       if (cleanupRef.current) {
         cleanupRef.current();
@@ -120,15 +130,19 @@ export function useOrcaQuery(sessionIdRef?: React.MutableRefObject<string | null
       setState({ ...initialState, loading: true });
 
       try {
+        const targetLat = customLoc?.lat ?? overrideLocation?.lat ?? location.lat;
+        const targetLon = customLoc?.lon ?? overrideLocation?.lon ?? location.lon;
+        const targetName = customLoc?.name ?? overrideLocation?.name ?? location.name;
+
         const resp = await sendQuery({
           text,
           language,
           vessel_class: vesselClass,
           session_id: sessionIdRef?.current ?? undefined,
           mode: 'real',
-          lat: 17.6868,
-          lon: 83.2185,
-          location_name: 'Visakhapatnam Harbor',
+          lat: targetLat,
+          lon: targetLon,
+          location_name: targetName,
         });
 
         // Persist session_id for multi-turn conversations
@@ -196,7 +210,7 @@ export function useOrcaQuery(sessionIdRef?: React.MutableRefObject<string | null
         }));
       }
     },
-    [sessionIdRef],
+    [sessionIdRef, overrideLocation, location],
   );
 
   const reset = useCallback(() => {
@@ -214,24 +228,45 @@ export function useOrcaQuery(sessionIdRef?: React.MutableRefObject<string | null
  * Sync mode — fires a query and waits for the full result.
  * Best for dashboard pre-loading (sea conditions on mount).
  */
-export function useOrcaSyncQuery() {
+export function useOrcaSyncQuery(
+  overrideLocation?: { lat?: number; lon?: number; name?: string },
+) {
+  const { location } = useLocation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SyncQueryResponse | null>(null);
 
-  const fetch = useCallback(async (text: string, language = 'en') => {
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const data = await sendQuerySync({ text, language, mode: 'real' });
-      setResult(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reach ORCA API.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const fetch = useCallback(
+    async (
+      text: string,
+      language = 'en',
+      customLoc?: { lat?: number; lon?: number; name?: string },
+    ) => {
+      setLoading(true);
+      setError(null);
+      setResult(null);
+      try {
+        const targetLat = customLoc?.lat ?? overrideLocation?.lat ?? location.lat;
+        const targetLon = customLoc?.lon ?? overrideLocation?.lon ?? location.lon;
+        const targetName = customLoc?.name ?? overrideLocation?.name ?? location.name;
+
+        const data = await sendQuerySync({
+          text,
+          language,
+          mode: 'real',
+          lat: targetLat,
+          lon: targetLon,
+          location_name: targetName,
+        });
+        setResult(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to reach ORCA API.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [overrideLocation, location],
+  );
 
   return { loading, error, result, fetch };
 }
