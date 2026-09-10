@@ -384,6 +384,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   // Dedicated reference to active HTMLAudioElement for instant cutoff & speech control
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Dedicated AbortController to cancel in-flight queries when user taps mic to interrupt / re-record
+  const voiceAbortControllerRef = useRef<AbortController | null>(null);
+
   // ── Stop all audio immediately (Neural audio + SpeechSynthesis) ───────────
   const stopAllAudio = useCallback(() => {
     if (currentAudioRef.current) {
@@ -510,16 +513,50 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       } catch {}
       setIsListening(false);
 
+      // 4. Low-Latency Female Speech Strategy:
+      // If the browser already has an installed female voice for English or Hindi,
+      // speak instantly via Web Speech Synthesis (0ms network delay).
+      const femaleVoice = getFemaleVoice(effectiveLang, availableVoices);
+      const isInstantBrowserVoice = femaleVoice && (
+        (effectiveLang === 'en' && femaleVoice.lang.toLowerCase().startsWith('en')) ||
+        (effectiveLang === 'hi' && (femaleVoice.lang.toLowerCase().startsWith('hi') || femaleVoice.name.toLowerCase().includes('hindi')))
+      );
+
+      if (isInstantBrowserVoice) {
+        speakWithBrowserSynthesis(cleanText, effectiveLang, onFinish);
+        return;
+      }
+
+      // For Telugu, Tamil, and other regional languages without built-in browser voices:
+      // Stream neural audio via /api/tts with an aggressive 2.2s fallback timer
+      // so fishermen NEVER experience long uncomfortable dead silences.
       try {
-        // Attempt broadcast-grade neural TTS via /api/tts
         const ttsUrl = `/api/tts?text=${encodeURIComponent(cleanText)}&language=${encodeURIComponent(effectiveLang)}`;
-        const audio = new Audio(ttsUrl);
+        const audio = new Audio();
+        audio.preload = 'auto';
         currentAudioRef.current = audio;
 
-        setIsSpeaking(true);
-        isSpeakingRef.current = true;
+        let hasStarted = false;
+        const fallbackTimer = setTimeout(() => {
+          if (!hasStarted) {
+            console.warn('Backend neural TTS latency fallback triggered');
+            if (currentAudioRef.current === audio) {
+              try { audio.pause(); } catch {}
+              currentAudioRef.current = null;
+            }
+            speakWithBrowserSynthesis(cleanText, effectiveLang, onFinish);
+          }
+        }, 2200);
+
+        audio.onplaying = () => {
+          hasStarted = true;
+          clearTimeout(fallbackTimer);
+          setIsSpeaking(true);
+          isSpeakingRef.current = true;
+        };
 
         audio.onended = () => {
+          clearTimeout(fallbackTimer);
           setIsSpeaking(false);
           isSpeakingRef.current = false;
           currentAudioRef.current = null;
@@ -527,27 +564,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         };
 
         audio.onerror = (e) => {
-          console.warn('Backend neural TTS error, falling back to Web Speech:', e);
-          currentAudioRef.current = null;
-          speakWithBrowserSynthesis(cleanText, effectiveLang, onFinish);
+          clearTimeout(fallbackTimer);
+          if (!hasStarted) {
+            console.warn('Backend neural TTS error, falling back to Web Speech:', e);
+            currentAudioRef.current = null;
+            speakWithBrowserSynthesis(cleanText, effectiveLang, onFinish);
+          }
         };
 
+        audio.src = ttsUrl;
         audio.play().catch((err) => {
-          console.warn('Neural audio play prevented or failed, falling back to Web Speech:', err);
-          currentAudioRef.current = null;
-          speakWithBrowserSynthesis(cleanText, effectiveLang, onFinish);
+          clearTimeout(fallbackTimer);
+          if (!hasStarted) {
+            console.warn('Neural audio play prevented or failed, falling back to Web Speech:', err);
+            currentAudioRef.current = null;
+            speakWithBrowserSynthesis(cleanText, effectiveLang, onFinish);
+          }
         });
       } catch (err) {
         console.warn('Audio construction error:', err);
         speakWithBrowserSynthesis(cleanText, effectiveLang, onFinish);
       }
     },
-    [currentLanguage, stopAllAudio, speakWithBrowserSynthesis]
+    [currentLanguage, stopAllAudio, speakWithBrowserSynthesis, availableVoices]
   );
 
   // ── Submit complete voice question to ORCA backend synchronously (sub-second) ──
   const submitVoiceQuery = useCallback(
     async (query: string) => {
+      // 1. Abort any previous query in-flight
+      if (voiceAbortControllerRef.current) {
+        voiceAbortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      voiceAbortControllerRef.current = controller;
+
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
@@ -576,15 +627,23 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       voiceProcessingRef.current = true;
 
       try {
-        const resp = await sendQuerySync({
-          text: query,
-          language: detectedLang,
-          session_id: voiceSessionIdRef.current || undefined,
-          mode: 'real',
-          lat: location.lat,
-          lon: location.lon,
-          location_name: location.name,
-        });
+        const resp = await sendQuerySync(
+          {
+            text: query,
+            language: detectedLang,
+            session_id: voiceSessionIdRef.current || undefined,
+            mode: 'real',
+            lat: location.lat,
+            lon: location.lon,
+            location_name: location.name,
+          },
+          controller.signal
+        );
+
+        // If cancelled/aborted while request was in-flight, exit cleanly
+        if (controller.signal.aborted) {
+          return;
+        }
 
         if (resp.session_id) {
           voiceSessionIdRef.current = resp.session_id;
@@ -623,10 +682,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               if (voiceSessionActiveRef.current && !voiceProcessingRef.current && !isSpeakingRef.current) {
                 startListening();
               }
-            }, 450);
+            }, 350);
           }
         });
-      } catch (err) {
+      } catch (err: any) {
+        // If aborted by user tapping mic, exit cleanly without updating error state
+        if (err?.name === 'AbortError' || controller.signal.aborted) {
+          return;
+        }
         console.error('submitVoiceQuery error:', err);
         setVoiceProcessing(false);
         voiceProcessingRef.current = false;
@@ -653,6 +716,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         try {
           recognitionRef.current.abort();
         } catch {}
+        recognitionRef.current = null;
       }
 
       const recognition = new SpeechRecognition();
@@ -673,8 +737,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         }
 
         let transcript = '';
+        let isFinalResult = false;
         for (let i = 0; i < event.results.length; ++i) {
           transcript += event.results[i][0].transcript + ' ';
+          if (event.results[i].isFinal) {
+            isFinalResult = true;
+          }
         }
         transcript = transcript.trim();
 
@@ -686,7 +754,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             clearTimeout(silenceTimerRef.current);
           }
 
-          // Natural conversational pause: 1800ms silence before final submission
+          // Adaptive silence threshold for ultra-low latency:
+          // If browser finalized sentence, submit after 700ms.
+          // If still streaming interim words, wait 1300ms.
+          const silenceDelay = isFinalResult ? 700 : 1300;
+
           silenceTimerRef.current = setTimeout(() => {
             const finalQuery = accumulatedSpeechRef.current.trim();
             if (!finalQuery || isSpeakingRef.current || voiceProcessingRef.current) return;
@@ -694,7 +766,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             if (finalQuery.length >= 2) {
               submitVoiceQuery(finalQuery);
             }
-          }, 1800);
+          }, silenceDelay);
         }
       };
 
@@ -717,11 +789,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 recognition.start();
               } catch {}
             }
-          }, 300);
+          }, 200);
         }
       };
 
-      recognition.start();
+      try {
+        recognition.start();
+      } catch (startErr) {
+        console.warn('Speech recognition start retry:', startErr);
+        setTimeout(() => {
+          if (voiceSessionActiveRef.current && !isSpeakingRef.current && !voiceProcessingRef.current) {
+            try {
+              recognition.start();
+            } catch {}
+          }
+        }, 120);
+      }
     } catch (err) {
       console.error('Failed to start speech recognition:', err);
       setIsListening(false);
@@ -730,25 +813,56 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   // ── Start / Toggle / Interrupt Voice Chat Session ──────────────────────────
   const handleStartVoiceChat = useCallback(() => {
-    // 1. If currently speaking: STOP speech immediately, cancel audio, and start listening!
-    if (
+    // 1. If currently PROCESSING, SPEAKING, or PLAYING:
+    // The user wants to STOP the agent and RE-RECORD immediately!
+    const isBusy =
+      voiceProcessingRef.current ||
       isSpeakingRef.current ||
-      currentAudioRef.current ||
-      ('speechSynthesis' in window && window.speechSynthesis.speaking)
-    ) {
+      currentAudioRef.current !== null ||
+      (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis.speaking);
+
+    if (isBusy) {
+      // Abort active HTTP query in flight
+      if (voiceAbortControllerRef.current) {
+        voiceAbortControllerRef.current.abort();
+        voiceAbortControllerRef.current = null;
+      }
+
+      // Reset processing and audio states
+      setVoiceProcessing(false);
+      voiceProcessingRef.current = false;
       stopAllAudio();
-      setLiveSpeechText('');
-      accumulatedSpeechRef.current = '';
+
+      // Clear any pending timers and speech buffers
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
       }
+      setLiveSpeechText('');
+      accumulatedSpeechRef.current = '';
+
+      // Reset active turn
+      setCurrentTurn(null);
+
+      // Cleanly abort previous recognition instance
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+        recognitionRef.current = null;
+      }
+      setIsListening(false);
+
+      // Ensure voice session remains active
       setVoiceSessionActive(true);
       voiceSessionActiveRef.current = true;
-      // 150ms buffer prevents mic picking up dying reverberation from phone/laptop speakers
+
+      // Restart mic after 100ms hardware release window
       setTimeout(() => {
-        startListening();
-      }, 150);
+        if (voiceSessionActiveRef.current && !voiceProcessingRef.current && !isSpeakingRef.current) {
+          startListening();
+        }
+      }, 100);
       return;
     }
 
@@ -781,6 +895,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   // ── End Voice Chat Session ────────────────────────────────────────────────
   const handleEndVoiceChat = useCallback(() => {
+    if (voiceAbortControllerRef.current) {
+      voiceAbortControllerRef.current.abort();
+      voiceAbortControllerRef.current = null;
+    }
+    setVoiceProcessing(false);
+    voiceProcessingRef.current = false;
     setVoiceSessionActive(false);
     voiceSessionActiveRef.current = false;
     setIsListening(false);
@@ -790,6 +910,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     }
     try {
       recognitionRef.current?.abort();
+      recognitionRef.current = null;
     } catch {}
     stopAllAudio();
     setLiveSpeechText('');
@@ -800,6 +921,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
+      if (voiceAbortControllerRef.current) {
+        voiceAbortControllerRef.current.abort();
+      }
       stopAllAudio();
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
@@ -977,7 +1101,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               type="button"
               onClick={handleStartVoiceChat}
               aria-label={
-                isSpeaking
+                voiceProcessing
+                  ? 'Click to cancel and re-record question'
+                  : isSpeaking
                   ? 'Click to stop talking and ask another question'
                   : voiceSessionActive
                   ? isListening
@@ -985,7 +1111,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     : t.voice.startBtn
                   : t.voice.startBtn
               }
-              title={isSpeaking ? 'Click to stop voice & ask another question' : undefined}
+              title={
+                voiceProcessing
+                  ? 'Click mic to cancel and re-record'
+                  : isSpeaking
+                  ? 'Click to stop voice & ask another question'
+                  : undefined
+              }
               className="relative group focus:outline-none flex items-center justify-center cursor-pointer transition-transform active:scale-95"
             >
               <div
@@ -994,6 +1126,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     ? 'bg-blue-100 ring-4 ring-blue-300 scale-105 animate-pulse'
                     : isSpeaking
                     ? 'bg-amber-100 ring-4 ring-amber-300 scale-105 animate-pulse'
+                    : voiceProcessing
+                    ? 'bg-indigo-100 ring-4 ring-indigo-300 scale-105 animate-pulse'
                     : voiceSessionActive
                     ? 'bg-emerald-100 ring-4 ring-emerald-200'
                     : 'bg-[#e3eefd] group-hover:scale-105'
@@ -1006,6 +1140,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                         ? 'bg-red-500 animate-pulse'
                         : isSpeaking
                         ? 'bg-amber-500 hover:bg-amber-600'
+                        : voiceProcessing
+                        ? 'bg-indigo-600 hover:bg-indigo-700 animate-pulse'
                         : voiceSessionActive
                         ? 'bg-emerald-600'
                         : 'bg-[#0d6efd]'
@@ -1013,6 +1149,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   >
                     {isSpeaking ? (
                       <VolumeX className="w-8 h-8 text-white stroke-[2]" />
+                    ) : voiceProcessing ? (
+                      <Loader2 className="w-8 h-8 text-white stroke-[2] animate-spin" />
                     ) : (
                       <Mic className="w-8 h-8 text-white stroke-[2]" />
                     )}
@@ -1048,7 +1186,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               {isListening
                 ? t.voice.listening
                 : voiceProcessing
-                ? t.voice.processing
+                ? `${t.voice.processing} (Click mic to re-record)`
                 : isSpeaking
                 ? `${t.voice.speaking} (Click mic to stop & ask)`
                 : voiceSessionActive

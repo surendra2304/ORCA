@@ -479,11 +479,10 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             loc_name = loc_name or "Visakhapatnam Harbor"
 
         # Check if query also asks about sailing safety
-        asks_safety = bool(re.search(
-            r"\b(can\s+(i|we)|should\s+(i|we)|safe\s+to|safe\s+for|fishing\s+safety|సముద్రంలోకి\s*వెళ్ల|వేటకు\s*వెళ్ల|సురక్షిత|क्या\s+हम\s+जा\s+सकते|जा\s*सकते)\b",
-            query,
-            re.I
-        ))
+        asks_safety = bool(
+            re.search(r"\b(can\s+(i|we)|should\s+(i|we)|safe\s+to|safe\s+for|fishing\s+safety)\b", query, re.I) or
+            re.search(r"(సముద్రంలోకి\s*వెళ్ల|వేటకు\s*వెళ్ల|చేపల\s*వేట|సురక్షిత|వెళ్లవచ్చా|వెళ్లొచ్చా|పోవచ్చా|क्या\s+हम\s+जा\s+सकते|जा\s*सकते|सुरक्षित)", query, re.I)
+        )
 
         await collector.emit(
             "plan_created",

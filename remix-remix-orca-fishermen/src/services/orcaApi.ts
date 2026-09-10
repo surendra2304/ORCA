@@ -231,9 +231,10 @@ export async function sendQuery(req: QueryRequest): Promise<QueryResponse> {
  * Send a query and wait for the full result synchronously.
  * Best for dashboard pre-loading (non-chat use cases).
  */
-export async function sendQuerySync(req: QueryRequest): Promise<SyncQueryResponse> {
+export async function sendQuerySync(req: QueryRequest, signal?: AbortSignal): Promise<SyncQueryResponse> {
   const res = await fetch(`${ORCA_BASE_URL}/query?sync=true`, {
     method: 'POST',
+    signal,
     headers: { 
       'Content-Type': 'application/json',
       'Connection': 'keep-alive',
