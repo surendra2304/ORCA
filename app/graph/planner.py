@@ -316,6 +316,7 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
                 "entity_source": "query",
             },
         )
+        init_e = dict(state.get("entities") or {})
         return {
             "safety_relevant": False,
             "language": lang,
@@ -323,9 +324,9 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             "needed_agents": [],
             "execution_plan": [],
             "entities": {
-                "lat": None,
-                "lon": None,
-                "location_name": None,
+                "lat": init_e.get("lat"),
+                "lon": init_e.get("lon"),
+                "location_name": init_e.get("location_name"),
                 "date_hint": None,
                 "origin": None,
                 "destination": None,
@@ -581,6 +582,7 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
                 "entity_source": "query",
             },
         )
+        init_e = dict(state.get("entities") or {})
         return {
             "safety_relevant": False,
             "language": lang,
@@ -588,9 +590,9 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             "needed_agents": [],
             "execution_plan": [],
             "entities": {
-                "lat": None,
-                "lon": None,
-                "location_name": None,
+                "lat": init_e.get("lat"),
+                "lon": init_e.get("lon"),
+                "location_name": init_e.get("location_name"),
                 "date_hint": None,
                 "origin": None,
                 "destination": None,
@@ -613,8 +615,15 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             )
 
     history_digest = "\n".join(history_lines) if history_lines else "None (first turn in conversation)"
+    init_e = dict(state.get("entities") or {})
+    curr_lat = init_e.get("lat")
+    curr_lon = init_e.get("lon")
+    curr_loc = init_e.get("location_name")
+    user_loc_str = f"{curr_loc} (Coordinates: {curr_lat}, {curr_lon})" if curr_loc or curr_lat else "Unknown"
+
     prompt = (
         f"Conversation History (most recent turns):\n{history_digest}\n\n"
+        f"User's Known Live Location: {user_loc_str}\n"
         f"User Query: {query}\n"
         f"Provide the safety_relevant flag, detected query language (2-letter ISO code), "
         f"entity_source ('query' or 'inherited'), needed agents, execution plan, and entities."
@@ -693,14 +702,14 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
     execution_plan = [list(b) for b in final_plan["execution_plan"]]
     entities = dict(final_plan.get("entities") or {})
 
-    # If the current plan did not detect a new location from text, check if initial state had coordinates
+    # If the current plan did not detect a new location from text, preserve from initial state
+    init_entities = state.get("entities") or {}
     if entities.get("lat") is None and entities.get("lon") is None:
-        init_entities = state.get("entities") or {}
         if init_entities.get("lat") is not None and init_entities.get("lon") is not None:
             entities["lat"] = init_entities["lat"]
             entities["lon"] = init_entities["lon"]
-            if not entities.get("location_name"):
-                entities["location_name"] = init_entities.get("location_name")
+    if not entities.get("location_name") and init_entities.get("location_name"):
+        entities["location_name"] = init_entities.get("location_name")
 
     # Ensure entity_source and inheritance are consistently tracked across conversational turns
     if history:

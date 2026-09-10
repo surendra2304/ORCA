@@ -215,7 +215,8 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           data.address?.county ||
           data.address?.state_district;
         if (city) {
-          return `${city} (${port.name} Coast)`;
+          const portBase = port.name.replace(/\s+(Coast|Port|Harbor)\s*$/i, '');
+          return `${city} (${portBase} Coast)`;
         }
       }
     } catch {

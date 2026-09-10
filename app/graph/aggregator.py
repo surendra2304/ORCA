@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import json
 import logging
+import math
 import re
 from typing import Any, Dict
 
@@ -16,6 +17,44 @@ def get_ist_now_str() -> str:
     ist = timezone(timedelta(hours=5, minutes=30))
     now = datetime.now(ist)
     return now.strftime("%I:%M %p, %A, %d %B %Y")
+
+
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculates great-circle distance between two points on the Earth in kilometers."""
+    r = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return r * c
+
+
+COASTAL_DEST_MAP = {
+    "visakhapatnam": (17.6868, 83.2185, "Visakhapatnam"),
+    "vishakapatnam": (17.6868, 83.2185, "Visakhapatnam"),
+    "vizag": (17.6868, 83.2185, "Visakhapatnam"),
+    "విశాఖపట్నం": (17.6868, 83.2185, "విశాఖపట్నం"),
+    "విశాఖ": (17.6868, 83.2185, "విశాఖపట్నం"),
+    "వైజాగ్": (17.6868, 83.2185, "విశాఖపట్నం"),
+    "विशाखापट्टनम": (17.6868, 83.2185, "विशाखापट्टनम"),
+    "kakinada": (16.9891, 82.2475, "Kakinada"),
+    "కాకినాడ": (16.9891, 82.2475, "కాకినాడ"),
+    "काकीनाड़ा": (16.9891, 82.2475, "काकीनाड़ा"),
+    "bhimavaram": (16.5449, 81.5212, "Bhimavaram"),
+    "భీమవరం": (16.5449, 81.5212, "భీమవరం"),
+    "machilipatnam": (16.1875, 81.1389, "Machilipatnam"),
+    "మచిలీపట్నం": (16.1875, 81.1389, "మచిలీపట్నం"),
+    "vijayawada": (16.5062, 80.6480, "Vijayawada"),
+    "విజయవాడ": (16.5062, 80.6480, "విజయవాడ"),
+    "chennai": (13.0827, 80.2707, "Chennai"),
+    "చెన్నై": (13.0827, 80.2707, "చెన్నై"),
+    "சென்னை": (13.0827, 80.2707, "சென்னை"),
+    "hyderabad": (17.3850, 78.4867, "Hyderabad"),
+    "హైదరాబాద్": (17.3850, 78.4867, "హైదరాబాద్"),
+}
 
 
 AGGREGATOR_SYSTEM_TEMPLATE = (
@@ -55,14 +94,22 @@ AGGREGATOR_SYSTEM_TEMPLATE = (
 GENERAL_QA_SYSTEM_TEMPLATE = (
     "You are ORCA, a friendly, intelligent multilingual AI voice assistant. "
     "You communicate warmly, conversationally, and naturally like a real human friend, NEVER like a robot.\n\n"
-    "LIVE REAL-TIME CLOCK: {current_time} (Indian Standard Time, IST).\n\n"
-    "CRITICAL HUMAN CONVERSATIONAL RULES:\n"
+    "LIVE REAL-TIME CLOCK: {current_time} (Indian Standard Time, IST).\n"
+    "USER'S LIVE LOCATION: {user_location_info}\n"
+    "REQUIRED RESPONSE LANGUAGE: {language}\n\n"
+    "CRITICAL CONVERSATIONAL RULES:\n"
     "1. Speak naturally like a real human. NEVER use robotic prefixes, labels, bullet points, asterisks, or emojis. Plain text only.\n"
-    "2. Write the ENTIRE response in {language} using its native script (Telugu=తెలుగు, Hindi=हिंदी, Tamil=தமிழ், Bengali=বাংলা). NEVER reply in English unless {language} is en.\n"
+    "2. STRICT LANGUAGE MATCHING: You MUST formulate your entire response in {language}.\n"
+    "   - If {language} is 'en', respond in clear, fluent English.\n"
+    "   - If {language} is 'te', respond in native Telugu (తెలుగు).\n"
+    "   - If {language} is 'hi', respond in native Hindi (हिंदी).\n"
+    "   - If {language} is 'ta', respond in native Tamil (தமிழ்).\n"
+    "   - If {language} is 'bn', respond in native Bengali (বাংলা).\n"
     "3. Be warm, direct, and conversational — answer in 1 to 2 short, spoken sentences.\n"
-    "4. If asked what time or date it is, state the current time naturally (e.g. in Telugu: 'ప్రస్తుతం సమయం రాత్రి 11 గంటల 30 నిమిషాలు.').\n"
-    "5. If asked distances (e.g. Kakinada to Bhimavaram), answer naturally (e.g. 'కాకినాడ నుండి భీమవరం రోడ్డు మార్గంలో సుమారు 108 కిలోమీటర్లు, కారులో దాదాపు రెండున్నర గంటల సమయం పడుతుంది.').\n"
-    "6. Strictly DO NOT say 'First option', 'Second option', 'Option 1', or 'Alternatively'. Just give the natural direct answer."
+    "4. If asked what time or date it is, state the current time naturally.\n"
+    "5. If asked where the user is, or what their current location is, refer directly to the USER'S LIVE LOCATION provided above and state it warmly.\n"
+    "6. If asked for distances from 'here', 'my location', or between places, use the USER'S LIVE LOCATION as their starting point. State the distance clearly and warmly (by road and/or sea if relevant).\n"
+    "7. Strictly DO NOT say 'First option', 'Second option', 'Option 1', or 'Alternatively'. Just give the natural direct answer."
 )
 
 
@@ -101,9 +148,64 @@ async def aggregator_node(state: ORCAState, collector: TraceCollector) -> Dict[s
     verdict = state.get("verdict")
     needed_agents = state.get("needed_agents", [])
 
-    # Fast path: instant response for greetings or casual conversation
+    # Extract user's live location from state entities
+    entities = state.get("entities") or {}
+    curr_lat = entities.get("lat")
+    curr_lon = entities.get("lon")
+    curr_loc = entities.get("location_name")
+
+    clean_loc_name = curr_loc or ""
+    if clean_loc_name:
+        clean_loc_name = re.sub(r"\bCoast\s+Coast\b", "Coast", clean_loc_name, flags=re.IGNORECASE).strip()
+
+    if clean_loc_name and curr_lat is not None and curr_lon is not None:
+        user_loc_desc = f"{clean_loc_name} (Coordinates: {curr_lat:.4f}° N, {curr_lon:.4f}° E)"
+    elif curr_lat is not None and curr_lon is not None:
+        user_loc_desc = f"Coordinates: {curr_lat:.4f}° N, {curr_lon:.4f}° E"
+    elif clean_loc_name:
+        user_loc_desc = clean_loc_name
+    else:
+        user_loc_desc = "Unknown / Not provided"
+
+    # Fast path: instant response for greetings, location inquiries, or casual conversation
     clean_q = query.strip().lower()
     if not needed_agents and not state.get("safety_relevant", True):
+        # 1. Location inquiries ("what is my current location", "where am I", etc.)
+        location_patterns = [
+            r"what('s| is) my (current )?location",
+            r"where am i\b",
+            r"where are we\b",
+            r"what is my position",
+            r"show my location",
+            r"tell me my location",
+            r"my location",
+            r"నా లొకేషన్",
+            r"నా ప్రస్తుత ప్రాంతం",
+            r"నేను ఎక్కడ ఉన్నాను",
+            r"నేను ఎక్కడున్నాను",
+            r"మా లొకేషన్",
+            r"मेरा स्थान",
+            r"मैं कहाँ हूँ",
+            r"मेरी लोकेशन",
+            r"என் இருப்பிடம்",
+            r"நான் எங்கே இருக்கிறேன்",
+        ]
+        if any(re.search(p, clean_q, re.IGNORECASE) for p in location_patterns):
+            if clean_loc_name or (curr_lat is not None and curr_lon is not None):
+                loc_label = clean_loc_name or f"{curr_lat:.4f}° N, {curr_lon:.4f}° E"
+                coord_str = f"({curr_lat:.4f}° N, {curr_lon:.4f}° E)" if (curr_lat is not None and curr_lon is not None and f"{curr_lat:.4f}" not in loc_label) else ""
+                loc_map = {
+                    "te": f"మీ ప్రస్తుత ప్రాంతం {loc_label} {coord_str}.".replace("  ", " ").strip(),
+                    "hi": f"आपका वर्तमान स्थान {loc_label} {coord_str} है।".replace("  ", " ").strip(),
+                    "ta": f"உங்கள் தற்போதைய இருப்பிடம் {loc_label} {coord_str}.".replace("  ", " ").strip(),
+                    "bn": f"আপনার বর্তমান অবস্থান {loc_label} {coord_str}।".replace("  ", " ").strip(),
+                    "en": f"Your current location is {loc_label} {coord_str}.".replace("  ", " ").strip(),
+                }
+                ans = loc_map.get(language, loc_map["en"])
+                await collector.emit("final_answer", None, {"text": ans})
+                return {"final_answer": ans}
+
+        # 2. Thank you / gratitude
         if re.search(r"^(thanks|thank you|ధన్యవాదాలు|धन्यवाद|நன்றி|ধন্যবাদ)\b", clean_q):
             thanks_map = {
                 "te": "ధన్యవాదాలు! మీ ప్రయాణం సురక్షితంగా సాగాలి.",
@@ -116,6 +218,7 @@ async def aggregator_node(state: ORCAState, collector: TraceCollector) -> Dict[s
             await collector.emit("final_answer", None, {"text": ans})
             return {"final_answer": ans}
 
+        # 3. Who are you
         if re.search(r"^(who are you|what are you|what can you do|నువ్వు ఎవరు|तुम कौन हो)\b", clean_q):
             who_map = {
                 "te": "నేను ఓర్కా, మీ AI సహాయకుడిని. సముద్ర వాతావరణం, చేపల వేట జోన్లు, దూరాలు, మరియు ఏ ప్రశ్నైనా అడగండి.",
@@ -128,7 +231,7 @@ async def aggregator_node(state: ORCAState, collector: TraceCollector) -> Dict[s
             await collector.emit("final_answer", None, {"text": ans})
             return {"final_answer": ans}
 
-        # Check if it was a pure greeting (planner flagged it as non-safety with no agents)
+        # 4. Pure greetings
         is_greeting = re.search(
             r"^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|howdy|నమస్కారం|నమస్తే|హలో|హాయ్|నమస్తే|नमस्ते|नमस्कार|हेलो|हाय|வணக்கம்|ஹலோ|নমস্কার|হ্যালো)\b",
             query.strip(),
@@ -138,18 +241,39 @@ async def aggregator_node(state: ORCAState, collector: TraceCollector) -> Dict[s
             greeting_map = {
                 "te": "నమస్కారం! నేను ఓర్కా. మీకు ఎలా సహాయపడగలను?",
                 "hi": "नमस्ते! मैं ऑर्का हूँ। मैं आपकी क्या मदद कर सकती हूँ?",
-                "ta": "வணக்கம்! நான் ஆர்கா. இன்று உங்களுக்கு எவ்வாறு உதவ முடியும்?",
-                "bn": "নমস্কার! আমি ওর্কা। আজ আপনাকে কীভাবে সাহায্য করতে পারি?",
+                "ta": "வணக்கம்! நான் ஆர்கா. இன்று உங்களுக்கு எவ்வாறு உதవ முடியும்?",
+                "bn": "নমস্কার! আমি ওর্కా। আজ আপনাকে কীভাবে সাহায্য করতে পারি?",
                 "en": "Hello! I am ORCA. How can I help you today?",
             }
             ans = greeting_map.get(language, greeting_map["en"])
             await collector.emit("final_answer", None, {"text": ans})
             return {"final_answer": ans}
 
-        # General knowledge query — no marine agents needed, call LLM directly as general assistant
-        system_prompt = GENERAL_QA_SYSTEM_TEMPLATE.format(language=language, current_time=get_ist_now_str())
+        # 5. Distance and general knowledge queries: compute ground truth distance hint if applicable
+        enriched_query = query
+        if curr_lat is not None and curr_lon is not None:
+            for dest_key, (dest_lat, dest_lon, dest_canonical) in COASTAL_DEST_MAP.items():
+                if dest_key in clean_q:
+                    dist_km = haversine_km(curr_lat, curr_lon, dest_lat, dest_lon)
+                    road_km = int(round(dist_km * 1.35 / 5) * 5)
+                    sea_nm = int(round(dist_km / 1.852))
+                    road_hours = round((road_km / 50) * 2) / 2
+                    enriched_query = (
+                        f"{query}\n\n"
+                        f"[Ground Truth Distance Context: Straight-line distance from user's live location "
+                        f"({clean_loc_name or f'{curr_lat:.4f}, {curr_lon:.4f}'}) to {dest_canonical} is ~{dist_km:.0f} km. "
+                        f"By road it is approximately {road_km} km (around {road_hours} hours drive), and by sea it is roughly {sea_nm} nautical miles.]"
+                    )
+                    break
+
+        # Call LLM directly as general assistant with live location & clock
+        system_prompt = GENERAL_QA_SYSTEM_TEMPLATE.format(
+            language=language,
+            current_time=get_ist_now_str(),
+            user_location_info=user_loc_desc,
+        )
         try:
-            final_answer = await call_llm(prompt=query, system=system_prompt)
+            final_answer = await call_llm(prompt=enriched_query, system=system_prompt)
             final_answer = sanitize_voice_friendly_text(final_answer)
         except Exception as exc:
             logger.error("General QA LLM call failed: %s", exc)
@@ -165,10 +289,11 @@ async def aggregator_node(state: ORCAState, collector: TraceCollector) -> Dict[s
         await collector.emit("final_answer", None, {"text": final_answer})
         return {"final_answer": final_answer}
 
-    # Marine data query — use marine domain system prompt with agent outputs
+    # Marine data query — use marine domain system prompt with agent outputs & live location
     system_prompt = AGGREGATOR_SYSTEM_TEMPLATE.format(language=language)
     user_message = (
-        f"User Query: {query}\n\n"
+        f"User Query: {query}\n"
+        f"User's Live Location: {user_loc_desc}\n\n"
         f"Deterministic Safety Verdict:\n"
         f"{json.dumps(verdict, indent=2)}\n\n"
         f"Data from Marine & Meteorological Agents:\n"
