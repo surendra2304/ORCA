@@ -5,8 +5,11 @@ import re
 import time
 from typing import Any, AsyncGenerator, Dict, Optional, Tuple
 import uuid
+import os
 from fastapi import FastAPI, HTTPException, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 import uvicorn
@@ -24,7 +27,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="ORCA API", version=settings.VERSION)
 app.include_router(dashboard_router)
 
-# Allow the Vite dev server (port 3000) and any localhost origin to call this API
+# Allow the Vite dev server (port 3000/5173), any localhost origin, and Render cloud domains
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -33,6 +36,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
     ],
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -448,6 +452,42 @@ async def tts_post(req: TTSRequest):
     )
 
 
+
+# ---------------------------------------------------------------------------
+# SPA Static File Serving & Client-Side Routing
+# ---------------------------------------------------------------------------
+DIST_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dist")
+if os.path.isdir(DIST_DIR):
+    assets_dir = os.path.join(DIST_DIR, "assets")
+    if os.path.isdir(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/")
+    async def serve_root():
+        index_file = os.path.join(DIST_DIR, "index.html")
+        if os.path.isfile(index_file):
+            return FileResponse(index_file)
+        return {"app": settings.APP_NAME, "version": settings.VERSION, "docs": "/docs", "health": "/health"}
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Do not intercept API or documentation endpoints
+        if full_path.startswith(("api", "query", "stream", "health", "docs", "openapi.json", "redoc", "run", "sessions")):
+            raise HTTPException(status_code=404, detail="Not Found")
+        file_path = os.path.join(DIST_DIR, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        index_file = os.path.join(DIST_DIR, "index.html")
+        if os.path.isfile(index_file):
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="SPA index not found")
+else:
+    @app.get("/")
+    async def root_fallback():
+        return {"app": settings.APP_NAME, "version": settings.VERSION, "docs": "/docs", "health": "/health"}
+
+
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+
 

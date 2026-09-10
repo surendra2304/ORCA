@@ -1,0 +1,16 @@
+﻿services:
+  - type: web
+    name: orca-marine-intelligence
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: MOCK_MODE
+        value: "false"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
