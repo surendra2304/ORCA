@@ -135,16 +135,18 @@ export default function App() {
             <DashboardScreen
               seaConditions={currentSeaConditions}
               metrics={initialMetrics}
+              currentLanguage={currentLanguage}
               onOpenAlertsModal={() => setIsNotificationsOpen(true)}
               onSelectZone={handleSelectZoneFromDashboard}
             />
           )}
 
-          {currentScreen === 'analytics' && <AnalyticsScreen />}
+          {currentScreen === 'analytics' && <AnalyticsScreen currentLanguage={currentLanguage} />}
 
           {currentScreen === 'pfz-areas' && (
             <PFZAreasScreen
               selectedZoneId={selectedZoneId}
+              currentLanguage={currentLanguage}
               onSelectZone={setSelectedZoneId}
               onOpenZoneModal={(zone) => setZoneModalTarget(zone)}
             />
@@ -154,6 +156,7 @@ export default function App() {
             <SettingsScreen
               userProfile={userProfile}
               preferences={preferences}
+              currentLanguage={currentLanguage}
               onUpdateProfile={setUserProfile}
               onUpdatePreferences={setPreferences}
               onLogout={handleLogout}

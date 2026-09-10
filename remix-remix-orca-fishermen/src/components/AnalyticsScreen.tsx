@@ -13,7 +13,14 @@ import {
   initialMetrics,
 } from '../data/mockData';
 
-export const AnalyticsScreen: React.FC = () => {
+import { translations, SupportedLanguage } from '../i18n/translations';
+
+interface AnalyticsScreenProps {
+  currentLanguage?: SupportedLanguage;
+}
+
+export const AnalyticsScreen: React.FC<AnalyticsScreenProps> = ({ currentLanguage = 'en' }) => {
+  const t = translations[currentLanguage] || translations.en;
   const [timeframe, setTimeframe] = useState<'This Week' | 'Last Week' | 'This Month' | 'Season 2025'>('This Week');
   const [hoveredPoint, setHoveredPoint] = useState<{ date: string; kg: number } | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);

@@ -13,17 +13,22 @@ import {
 import { PFZZone, SuitabilityLevel } from '../types';
 import { pfzZones, harborCoords } from '../data/mockData';
 
+import { translations, SupportedLanguage } from '../i18n/translations';
+
 interface PFZAreasScreenProps {
   selectedZoneId: string;
   onSelectZone: (zoneId: string) => void;
   onOpenZoneModal: (zone: PFZZone) => void;
+  currentLanguage?: SupportedLanguage;
 }
 
 export const PFZAreasScreen: React.FC<PFZAreasScreenProps> = ({
   selectedZoneId,
   onSelectZone,
   onOpenZoneModal,
+  currentLanguage = 'en',
 }) => {
+  const t = translations[currentLanguage] || translations.en;
   const [filter, setFilter] = useState<'all' | SuitabilityLevel>('all');
   const [isSSTActive, setIsSSTActive] = useState(true);
   const [radarCoords, setRadarCoords] = useState('17.11° N, 82.71° E');
@@ -369,7 +374,7 @@ export const PFZAreasScreen: React.FC<PFZAreasScreenProps> = ({
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              All Zones
+              {t.pfz.allZones}
             </button>
             <button
               type="button"
@@ -380,7 +385,7 @@ export const PFZAreasScreen: React.FC<PFZAreasScreenProps> = ({
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              High Suitability
+              {t.pfz.high}
             </button>
             <button
               type="button"
@@ -391,7 +396,7 @@ export const PFZAreasScreen: React.FC<PFZAreasScreenProps> = ({
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              Medium Suitability
+              {t.pfz.moderate}
             </button>
             <button
               type="button"

@@ -10,6 +10,8 @@ import {
 import { UserProfile, UserPreferences } from '../types';
 import { OrcaLogo } from './OrcaLogo';
 
+import { translations, SupportedLanguage } from '../i18n/translations';
+
 interface SettingsScreenProps {
   userProfile: UserProfile;
   preferences: UserPreferences;
@@ -18,6 +20,7 @@ interface SettingsScreenProps {
   onLogout: () => void;
   onOpenHelpModal: () => void;
   onOpenLegalModal: (title: string, content: string) => void;
+  currentLanguage?: SupportedLanguage;
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
@@ -28,7 +31,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onLogout,
   onOpenHelpModal,
   onOpenLegalModal,
+  currentLanguage = 'en',
 }) => {
+  const t = translations[currentLanguage] || translations.en;
   const [formData, setFormData] = useState<UserProfile>(userProfile);
   const [saveToast, setSaveToast] = useState(false);
 

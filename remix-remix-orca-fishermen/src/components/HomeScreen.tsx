@@ -620,10 +620,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         speakText(ans, respLang, () => {
           if (voiceSessionActiveRef.current) {
             setTimeout(() => {
-              if (voiceSessionActiveRef.current) {
+              if (voiceSessionActiveRef.current && !voiceProcessingRef.current && !isSpeakingRef.current) {
                 startListening();
               }
-            }, 250);
+            }, 450);
           }
         });
       } catch (err) {
@@ -667,8 +667,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       };
 
       recognition.onresult = (event: any) => {
-        // Discard speech recognition events if assistant is speaking
-        if (isSpeakingRef.current) {
+        // Discard speech recognition events if assistant is speaking or query is processing
+        if (isSpeakingRef.current || voiceProcessingRef.current) {
           return;
         }
 
@@ -686,15 +686,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             clearTimeout(silenceTimerRef.current);
           }
 
-          // Natural utterance completion: 850ms silence + immediate submission
+          // Natural conversational pause: 1800ms silence before final submission
           silenceTimerRef.current = setTimeout(() => {
             const finalQuery = accumulatedSpeechRef.current.trim();
-            if (!finalQuery || isSpeakingRef.current) return;
+            if (!finalQuery || isSpeakingRef.current || voiceProcessingRef.current) return;
 
             if (finalQuery.length >= 2) {
               submitVoiceQuery(finalQuery);
             }
-          }, 850);
+          }, 1800);
         }
       };
 
@@ -717,7 +717,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 recognition.start();
               } catch {}
             }
-          }, 200);
+          }, 300);
         }
       };
 
@@ -789,10 +789,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       silenceTimerRef.current = null;
     }
     try {
-      recognitionRef.current?.stop();
+      recognitionRef.current?.abort();
     } catch {}
     stopAllAudio();
     setLiveSpeechText('');
+    accumulatedSpeechRef.current = '';
+    setShowHistory(true);
   }, [stopAllAudio]);
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
@@ -1099,7 +1101,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       onClick={() => speakText(currentTurn.answer || '', currentTurn.language)}
                       className="px-2.5 py-1 text-[11px] font-semibold text-blue-700 bg-white border border-blue-200 rounded-full hover:bg-blue-100/60 cursor-pointer shadow-2xs flex items-center gap-1"
                     >
-                      <Volume2 className="w-3.5 h-3.5" /> Replay Voice
+                      <Volume2 className="w-3.5 h-3.5" /> {t.voice.replayVoice}
                     </button>
                   </div>
                   <p className="text-slate-800 leading-relaxed text-[13.5px] font-medium">
@@ -1111,9 +1113,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </div>
           )}
 
-          {/* View Chat History (Available after turns exist or when ended) */}
-          {voiceHistory.length > 0 && (
+          {/* View Chat History (Available ONLY after conversation is ended) */}
+          {!voiceSessionActive && voiceHistory.length > 0 && (
             <div className="mt-5 w-full max-w-xl">
+              <div className="mb-2 text-center text-xs font-semibold text-slate-500 bg-slate-100/70 py-1.5 px-3 rounded-lg border border-slate-200/60">
+                {t.voice.historyNotice}
+              </div>
               <button
                 type="button"
                 onClick={() => setShowHistory((prev) => !prev)}
@@ -1122,7 +1127,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <span className="flex items-center gap-2">
                   <History className="w-4 h-4 text-blue-600" />
                   {showHistory ? t.voice.hideHistory : t.voice.viewHistory} ({voiceHistory.length}{' '}
-                  {voiceHistory.length === 1 ? 'turn' : 'turns'})
+                  {voiceHistory.length === 1 ? t.voice.turn : t.voice.turns})
                 </span>
                 {showHistory ? (
                   <ChevronUp className="w-4 h-4 text-slate-500" />
@@ -1140,7 +1145,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     >
                       <div className="flex items-center justify-between text-[10.5px] text-slate-400">
                         <span className="font-bold text-blue-600 uppercase tracking-wider">
-                          Turn {index + 1}
+                          {t.voice.turn} {index + 1}
                         </span>
                         <span>{turn.timestamp}</span>
                       </div>
@@ -1160,7 +1165,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                             onClick={() => speakText(turn.answer, turn.language)}
                             className="text-[10px] text-blue-600 hover:text-blue-800 flex items-center gap-1 font-semibold cursor-pointer"
                           >
-                            <Volume2 className="w-3 h-3" /> Play
+                            <Volume2 className="w-3 h-3" /> {t.voice.replayVoice}
                           </button>
                         </div>
                         <p className="text-slate-800 text-xs leading-relaxed">{turn.answer}</p>
@@ -1460,29 +1465,29 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               </span>
               <div>
                 <h3 className="text-[15px] font-bold text-[#0b2545]">
-                  Open-Meteo Marine & Hourly Forecast
+                  {t.weatherCard.title}
                 </h3>
                 <p className="text-[11.5px] text-[#64748b]">
-                  {location.name} • 24-Hour Weather & Sea Predictions
+                  {location.name} • {t.weatherCard.predictions}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Live API
+                {t.weatherCard.liveApi}
               </span>
               <span className="text-[10.5px] text-slate-400">
                 {lastBriefingTime
-                  ? `Updated ${lastBriefingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  ? `${t.weatherCard.updated} ${lastBriefingTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
                   : weatherOut.fetched_at
-                  ? `Updated ${new Date(weatherOut.fetched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                  : 'Realtime'}
+                  ? `${t.weatherCard.updated} ${new Date(weatherOut.fetched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                  : t.weatherCard.realtime}
               </span>
               <button
                 onClick={() => loadBriefing(true)}
                 disabled={briefingLoading}
-                title="Force refresh real-time weather & marine data"
+                title={t.weatherCard.forceRefresh}
                 className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all disabled:opacity-40"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${briefingLoading ? 'animate-spin text-blue-600' : ''}`} />
@@ -1494,49 +1499,49 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100">
               <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-semibold mb-1">
-                <Thermometer className="w-3.5 h-3.5 text-amber-500" /> Air Temp
+                <Thermometer className="w-3.5 h-3.5 text-amber-500" /> {t.weatherCard.airTemp}
               </div>
               <div className="text-[16px] font-bold text-slate-900">
                 {weatherOut.temp_c != null ? `${weatherOut.temp_c.toFixed(1)}°C` : '--'}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5">
-                {weatherOut.weather_desc || 'Fair'}
+                {weatherOut.weather_desc || t.weatherCard.fair}
               </div>
             </div>
 
             <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100">
               <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-semibold mb-1">
-                <Wind className="w-3.5 h-3.5 text-blue-500" /> Wind & Gusts
+                <Wind className="w-3.5 h-3.5 text-blue-500" /> {t.weatherCard.windGusts}
               </div>
               <div className="text-[16px] font-bold text-slate-900">
                 {windKt != null ? `${windKt.toFixed(0)} kn` : '--'}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5">
-                Gusts: {weatherOut.gusts_knots != null ? `${weatherOut.gusts_knots.toFixed(0)} kn` : '--'}
+                {t.weatherCard.gusts}: {weatherOut.gusts_knots != null ? `${weatherOut.gusts_knots.toFixed(0)} kn` : '--'}
               </div>
             </div>
 
             <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100">
               <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-semibold mb-1">
-                <Waves className="w-3.5 h-3.5 text-cyan-600" /> Waves & Swell
+                <Waves className="w-3.5 h-3.5 text-cyan-600" /> {t.weatherCard.wavesSwell}
               </div>
               <div className="text-[16px] font-bold text-slate-900">
                 {waveH != null ? `${waveH.toFixed(1)} m` : '--'}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5">
-                Swell: {oceanOut?.swell_height_m != null ? `${oceanOut.swell_height_m.toFixed(1)} m` : '--'}
+                {t.weatherCard.swell}: {oceanOut?.swell_height_m != null ? `${oceanOut.swell_height_m.toFixed(1)} m` : '--'}
               </div>
             </div>
 
             <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100">
               <div className="flex items-center gap-1.5 text-slate-500 text-[11px] font-semibold mb-1">
-                <Droplets className="w-3.5 h-3.5 text-indigo-500" /> Rain & SST
+                <Droplets className="w-3.5 h-3.5 text-indigo-500" /> {t.weatherCard.rainSst}
               </div>
               <div className="text-[16px] font-bold text-slate-900">
                 {weatherOut.rain_mm != null ? `${weatherOut.rain_mm.toFixed(1)} mm` : '0 mm'}
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5">
-                SST: {sstC != null ? `${sstC.toFixed(1)}°C` : '--'}
+                {t.weatherCard.sst}: {sstC != null ? `${sstC.toFixed(1)}°C` : '--'}
               </div>
             </div>
           </div>
@@ -1544,8 +1549,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           {/* 24-Hour Hourly Timeline */}
           <div>
             <div className="text-[12px] font-bold text-slate-700 mb-2 flex items-center justify-between">
-              <span>Hourly Forecast Timeline (24 Hours)</span>
-              <span className="text-[11px] text-slate-400 font-normal">Scroll horizontally →</span>
+              <span>{t.weatherCard.hourlyTimeline}</span>
+              <span className="text-[11px] text-slate-400 font-normal">{t.weatherCard.scrollHorizontal}</span>
             </div>
             <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
               {weatherOut.forecast_hours.map((h, i) => {

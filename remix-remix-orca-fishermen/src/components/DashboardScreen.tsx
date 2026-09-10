@@ -23,11 +23,14 @@ import { useLocation } from '../context/LocationContext';
 import { fetchBriefing } from '../services/orcaApi';
 import type { BriefingResponse } from '../services/orcaApi';
 
+import { translations, SupportedLanguage } from '../i18n/translations';
+
 interface DashboardScreenProps {
   seaConditions: SeaConditionsData;
   metrics: MetricSummary;
   onOpenAlertsModal: () => void;
   onSelectZone: (zoneId: string) => void;
+  currentLanguage?: SupportedLanguage;
 }
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
@@ -35,8 +38,10 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   metrics,
   onOpenAlertsModal,
   onSelectZone,
+  currentLanguage = 'en',
 }) => {
   const { location } = useLocation();
+  const t = translations[currentLanguage] || translations.en;
 
   // ── Instant live Open-Meteo marine & weather briefing ──────────────────────
   const [briefing, setBriefing] = useState<BriefingResponse | null>(null);
@@ -405,7 +410,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5" data-purpose="kpi-metrics">
         {/* KPI 1: Total Trips */}
         <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-100 shadow-2xs flex flex-col justify-between h-36">
-          <span className="text-xs font-semibold text-slate-500">Total Trips</span>
+          <span className="text-xs font-semibold text-slate-500">{t.dashboard.kpiTrips}</span>
           <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
             {metrics.totalTrips}
           </div>
@@ -413,14 +418,14 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             <span className="text-sm font-black leading-none">↑</span>
             <span>
               {metrics.tripsChange.split(' ')[0]}{' '}
-              <span className="font-medium text-slate-400 ml-0.5">vs last week</span>
+              <span className="font-medium text-slate-400 ml-0.5">{t.dashboard.vsLastWeek}</span>
             </span>
           </div>
         </div>
 
         {/* KPI 2: Total Catch */}
         <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-100 shadow-2xs flex flex-col justify-between h-36">
-          <span className="text-xs font-semibold text-slate-500">Total Catch</span>
+          <span className="text-xs font-semibold text-slate-500">{t.dashboard.kpiCatch}</span>
           <div className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-baseline gap-1.5">
             {metrics.totalCatchKg} <span className="text-base font-bold text-slate-700">kg</span>
           </div>
@@ -428,14 +433,14 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             <span className="text-sm font-black leading-none">↑</span>
             <span>
               {metrics.catchChange.split(' ')[0]}{' '}
-              <span className="font-medium text-slate-400 ml-0.5">vs last week</span>
+              <span className="font-medium text-slate-400 ml-0.5">{t.dashboard.vsLastWeek}</span>
             </span>
           </div>
         </div>
 
         {/* KPI 3: Avg. Catch / Trip */}
         <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-100 shadow-2xs flex flex-col justify-between h-36">
-          <span className="text-xs font-semibold text-slate-500">Avg. Catch / Trip</span>
+          <span className="text-xs font-semibold text-slate-500">{t.dashboard.kpiAvgCatch}</span>
           <div className="text-3xl font-extrabold text-slate-900 tracking-tight flex items-baseline gap-1.5">
             {metrics.avgCatchKg} <span className="text-base font-bold text-slate-700">kg</span>
           </div>
@@ -443,14 +448,14 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
             <span className="text-sm font-black leading-none">↑</span>
             <span>
               {metrics.avgCatchChange.split(' ')[0]}{' '}
-              <span className="font-medium text-slate-400 ml-0.5">vs last week</span>
+              <span className="font-medium text-slate-400 ml-0.5">{t.dashboard.vsLastWeek}</span>
             </span>
           </div>
         </div>
 
         {/* KPI 4: Best Fishing Zone */}
         <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-100 shadow-2xs flex flex-col justify-between h-36">
-          <span className="text-xs font-semibold text-slate-500">Best Fishing Zone</span>
+          <span className="text-xs font-semibold text-slate-500">{t.dashboard.kpiBestZone}</span>
           <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
             {metrics.bestZone}
           </div>
@@ -468,15 +473,15 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           data-purpose="sea-conditions"
         >
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-bold text-slate-900">Live Sea Conditions</h3>
+            <h3 className="text-sm font-bold text-slate-900">{t.dashboard.liveSeaConditions}</h3>
             {liveLoading && (
               <span className="flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                <Loader2 className="w-3 h-3 animate-spin" /> Fetching
+                <Loader2 className="w-3 h-3 animate-spin" /> {t.dashboard.fetching}
               </span>
             )}
             {!liveLoading && liveResult && (
               <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">
-                Live Data
+                {t.dashboard.liveData}
               </span>
             )}
           </div>
@@ -491,7 +496,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                   </span>
                   <div>
                     <span className="text-xs font-semibold text-slate-600 block leading-tight">
-                      Sea Temp (SST)
+                      {t.dashboard.seaTempSst}
                     </span>
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded mt-0.5">
                       {seaConditions.tempStatus}
@@ -528,7 +533,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 <span className="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center text-slate-700">
                   <Wind className="w-4 h-4 stroke-[1.8]" />
                 </span>
-                <span className="text-xs font-semibold text-slate-600">Wind Speed</span>
+                <span className="text-xs font-semibold text-slate-600">{t.dashboard.windSpeed}</span>
               </div>
               <span className="text-xs font-bold text-slate-900">
                 {seaConditions.windSpeed} km/h
@@ -541,7 +546,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 <span className="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center text-slate-700">
                   <Waves className="w-4 h-4 stroke-[1.8]" />
                 </span>
-                <span className="text-xs font-semibold text-slate-600">Wave Height</span>
+                <span className="text-xs font-semibold text-slate-600">{t.dashboard.waveHeight}</span>
               </div>
               <span className="text-xs font-bold text-slate-900">
                 {seaConditions.waveHeight} m
@@ -567,7 +572,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 <span className="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center text-slate-700">
                   <ArrowUp className="w-4 h-4 stroke-[2] text-[#0d6efd]" />
                 </span>
-                <span className="text-xs font-semibold text-slate-600">Tide</span>
+                <span className="text-xs font-semibold text-slate-600">{t.dashboard.tideLevel}</span>
               </div>
               <span className="text-xs font-bold text-slate-900 flex items-center gap-0.5">
                 <span className="text-[#0d6efd] font-extrabold">↑</span> {seaConditions.tide} m
@@ -581,7 +586,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
                   <span className="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center text-slate-700">
                     <Eye className="w-4 h-4 stroke-[1.8]" />
                   </span>
-                  <span className="text-xs font-semibold text-slate-600">Visibility</span>
+                  <span className="text-xs font-semibold text-slate-600">{t.metrics.visibility}</span>
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-bold text-slate-900">
