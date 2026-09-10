@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppScreen, UserProfile, UserPreferences, PFZZone, MarineAlert } from './types';
 import {
   initialUserProfile,
@@ -20,6 +20,7 @@ import { NotificationsModal } from './components/NotificationsModal';
 import { ZoneDetailsModal } from './components/ZoneDetailsModal';
 import { SupportModal } from './components/SupportModal';
 import { LegalModal } from './components/LegalModal';
+import { translations, SupportedLanguage } from './i18n/translations';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>('home');
@@ -27,6 +28,12 @@ export default function App() {
   const [preferences, setPreferences] = useState<UserPreferences>(initialPreferences);
   const [selectedZoneId, setSelectedZoneId] = useState<string>('pfz-03');
   const [alerts, setAlerts] = useState<MarineAlert[]>(initialAlerts);
+
+  // Multilingual State
+  const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguage>(() => {
+    const saved = localStorage.getItem('orca_user_language') as SupportedLanguage | null;
+    return saved && translations[saved] ? saved : 'en';
+  });
 
   // Modals state
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -47,11 +54,20 @@ export default function App() {
     setAlerts((prev) => prev.map((a) => ({ ...a, isRead: true })));
   };
 
-  const handleLoginSuccess = (name: string) => {
+  const handleLanguageChange = (lang: SupportedLanguage) => {
+    setCurrentLanguage(lang);
+    localStorage.setItem('orca_user_language', lang);
+  };
+
+  const handleLoginSuccess = (name: string, lang: SupportedLanguage) => {
     setUserProfile((prev) => ({
       ...prev,
       name: name || 'Ramesh',
     }));
+    if (lang) {
+      setCurrentLanguage(lang);
+      localStorage.setItem('orca_user_language', lang);
+    }
     setCurrentScreen('home');
   };
 
@@ -66,7 +82,13 @@ export default function App() {
 
   // If on Login screen, render Login Screen standalone
   if (currentScreen === 'login') {
-    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+    return (
+      <LoginScreen
+        currentLanguage={currentLanguage}
+        onLanguageChange={handleLanguageChange}
+        onLoginSuccess={handleLoginSuccess}
+      />
+    );
   }
 
   return (
@@ -78,6 +100,7 @@ export default function App() {
       {/* Persistent Left Sidebar */}
       <Sidebar
         currentScreen={currentScreen}
+        currentLanguage={currentLanguage}
         onNavigate={setCurrentScreen}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
@@ -91,6 +114,8 @@ export default function App() {
           currentScreen={currentScreen}
           userProfile={userProfile}
           unreadAlertCount={unreadAlertCount}
+          currentLanguage={currentLanguage}
+          onLanguageChange={handleLanguageChange}
           onOpenNotifications={() => setIsNotificationsOpen(true)}
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
           onNavigate={setCurrentScreen}
@@ -99,7 +124,12 @@ export default function App() {
 
         {/* Screen Views */}
         <main className="flex-1 px-4 sm:px-8 py-6 max-w-7xl mx-auto w-full">
-          {currentScreen === 'home' && <HomeScreen />}
+          {currentScreen === 'home' && (
+            <HomeScreen
+              currentLanguage={currentLanguage}
+              onLanguageChange={handleLanguageChange}
+            />
+          )}
 
           {currentScreen === 'dashboard' && (
             <DashboardScreen

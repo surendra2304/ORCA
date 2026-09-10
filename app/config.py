@@ -12,11 +12,12 @@ class Settings(BaseSettings):
     )
 
     GEMINI_API_KEY: str = ""
+    GEMINI_FALLBACK_KEY: str = ""
     GROQ_API_KEY: str = ""
-    MODEL_GEMINI: str = "gemini-3.5-flash-lite"
+    MODEL_GEMINI: str = "gemini-flash-latest"
     MODEL_GROQ: str = "openai/gpt-oss-20b"
-    MOCK_MODE: bool = True
-    LLM_TIMEOUT_S: float = 30.0
+    MOCK_MODE: bool = False
+    LLM_TIMEOUT_S: float = 15.0
     HTTP_TIMEOUT_S: float = 10.0
     HTTP_RETRIES: int = 1
     CACHE_TTL_S: int = 900
@@ -50,10 +51,28 @@ class Settings(BaseSettings):
     APP_NAME: str = "ORCA"
     VERSION: str = "0.1.0"
 
+    # ADVISORY ZONE-INDEX weights for zone COMPARISON only. NOT safety thresholds. Vessel verdicts come ONLY from the rule engine (rules/safety_rules.yaml).
+    DASHBOARD_CACHE_TTL_S: int = 600
+    TIMESERIES_DEFAULT_DAYS: int = 30       # cap 92 (open-meteo limit)
+    ZONE_INDEX_FORMULA_VERSION: str = "zi-1.0"
+    ZONE_INDEX_WAVE_W: float = 16.0         # cost per meter of wave height
+    ZONE_INDEX_WAVE_MAX: float = 40.0       # component cap
+    ZONE_INDEX_WIND_W: float = 1.5          # cost per knot
+    ZONE_INDEX_WIND_MAX: float = 30.0
+    ZONE_INDEX_ALERT_MODERATE: float = 15.0
+    ZONE_INDEX_ALERT_HIGH: float = 30.0
+    ZONE_INDEX_RESTRICTED_SCORE: float = 0.0
+    DISASTERS_FILE: str = "data/disasters/cyclones.json"
+
     @property
     def gemini_configured(self) -> bool:
         """Returns True if GEMINI_API_KEY is non-empty."""
         return bool(self.GEMINI_API_KEY and self.GEMINI_API_KEY.strip())
+
+    @property
+    def gemini_fallback_configured(self) -> bool:
+        """Returns True if GEMINI_FALLBACK_KEY is non-empty."""
+        return bool(self.GEMINI_FALLBACK_KEY and self.GEMINI_FALLBACK_KEY.strip())
 
     @property
     def groq_configured(self) -> bool:
@@ -61,5 +80,19 @@ class Settings(BaseSettings):
         return bool(self.GROQ_API_KEY and self.GROQ_API_KEY.strip())
 
 
+
 # Exported singleton instance
 settings = Settings()
+
+# Module-level exports
+ZONE_INDEX_FORMULA_VERSION = settings.ZONE_INDEX_FORMULA_VERSION
+ZONE_INDEX_WAVE_W = settings.ZONE_INDEX_WAVE_W
+ZONE_INDEX_WAVE_MAX = settings.ZONE_INDEX_WAVE_MAX
+ZONE_INDEX_WIND_W = settings.ZONE_INDEX_WIND_W
+ZONE_INDEX_WIND_MAX = settings.ZONE_INDEX_WIND_MAX
+ZONE_INDEX_ALERT_MODERATE = settings.ZONE_INDEX_ALERT_MODERATE
+ZONE_INDEX_ALERT_HIGH = settings.ZONE_INDEX_ALERT_HIGH
+ZONE_INDEX_RESTRICTED_SCORE = settings.ZONE_INDEX_RESTRICTED_SCORE
+DASHBOARD_CACHE_TTL_S = settings.DASHBOARD_CACHE_TTL_S
+TIMESERIES_DEFAULT_DAYS = settings.TIMESERIES_DEFAULT_DAYS
+DISASTERS_FILE = settings.DISASTERS_FILE

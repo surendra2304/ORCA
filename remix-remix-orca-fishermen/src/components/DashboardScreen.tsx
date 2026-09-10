@@ -14,9 +14,11 @@ import {
   Layers,
   Crosshair,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { SeaConditionsData, MetricSummary } from '../types';
 import { harborCoords, pfzZones } from '../data/mockData';
+import { useOrcaSyncQuery } from '../hooks/useOrcaQuery';
 
 interface DashboardScreenProps {
   seaConditions: SeaConditionsData;
@@ -26,11 +28,50 @@ interface DashboardScreenProps {
 }
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
-  seaConditions,
+  seaConditions: fallbackConditions,
   metrics,
   onOpenAlertsModal,
   onSelectZone,
 }) => {
+  // ── Live data from ORCA API ────────────────────────────────────────────────
+  const { loading: liveLoading, result: liveResult, fetch: fetchLive } = useOrcaSyncQuery();
+
+  // Fetch real conditions once on mount
+  useEffect(() => {
+    fetchLive(
+      'What are the current sea conditions, wave height, wind speed, SST and safety status near Kakinada coast? Include ocean and weather data.',
+      'en'
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Merge real data over fallback when available
+  const ocean = liveResult?.agent_outputs?.ocean;
+  const weather = liveResult?.agent_outputs?.weather;
+  const verdict = liveResult?.verdict;
+
+  const seaConditions: SeaConditionsData = {
+    seaTemp: ocean?.sst_c ?? fallbackConditions.seaTemp,
+    tempStatus: ocean ? (ocean.sst_c > 29 ? 'Warm Front' : ocean.sst_c < 26 ? 'Cool Upwelling' : 'Normal Front') : fallbackConditions.tempStatus,
+    heatStress: ocean ? (ocean.sst_c > 30 ? 'High' : ocean.sst_c > 28 ? 'Moderate' : 'Low') : fallbackConditions.heatStress,
+    windSpeed: weather ? Math.round(weather.wind_speed_kt * 1.852) : fallbackConditions.windSpeed, // knots → km/h
+    waveHeight: ocean?.wave_height_m ?? fallbackConditions.waveHeight,
+    seaState: ocean
+      ? ocean.wave_height_m < 0.5 ? 'Calm' : ocean.wave_height_m < 1.25 ? 'Slight' : ocean.wave_height_m < 2.5 ? 'Moderate' : 'Rough'
+      : fallbackConditions.seaState,
+    tide: ocean?.tide_m ?? fallbackConditions.tide,
+    tideDirection: (ocean?.tide_m ?? 1) > 0 ? 'rising' : 'falling',
+    visibility: fallbackConditions.visibility,
+    visibilityRating: fallbackConditions.visibilityRating,
+    thermalFrontStatus: verdict
+      ? verdict.label === 'GO' ? 'Optimal' : verdict.label === 'CAUTION' ? 'Marginal' : 'Unfavorable'
+      : fallbackConditions.thermalFrontStatus,
+    thermalFrontNote: liveResult?.final_answer
+      ? liveResult.final_answer.slice(0, 120) + '...'
+      : fallbackConditions.thermalFrontNote,
+  };
+  // ── End live data ──────────────────────────────────────────────────────────
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const thermalLayerGroupRef = useRef<L.LayerGroup | null>(null);
@@ -388,7 +429,19 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
           className="lg:col-span-4 bg-white rounded-2xl p-5 sm:p-6 border border-slate-100 shadow-2xs flex flex-col justify-between"
           data-purpose="sea-conditions"
         >
-          <h3 className="text-sm font-bold text-slate-900 mb-2">Live Sea Conditions</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-bold text-slate-900">Live Sea Conditions</h3>
+            {liveLoading && (
+              <span className="flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                <Loader2 className="w-3 h-3 animate-spin" /> Fetching
+              </span>
+            )}
+            {!liveLoading && liveResult && (
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">
+                Live Data
+              </span>
+            )}
+          </div>
 
           <div className="divide-y divide-slate-100 flex-1 flex flex-col justify-between">
             {/* Row 1: Sea Temp with Thermal Heat Status & Mini Gauge */}

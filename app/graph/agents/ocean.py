@@ -38,7 +38,7 @@ class OceanAgent(MockAgent):
         return f"Waves {payload.get('wave_height_m')}m, swell {payload.get('swell_height_m')}m, SST {payload.get('sst_c')}°C, tide {payload.get('tide_state')}."
 
     async def run(self, emit: TraceCollector, state: ORCAState) -> Dict[str, Any]:
-        mode = state.get("mode", "mock")
+        mode = state.get("mode", "real")
         if mode == "mock":
             return await super().run(emit, state)
 

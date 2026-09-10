@@ -12,11 +12,11 @@ def test_golden_queries_json_schema():
         entries = json.load(f)
 
     assert isinstance(entries, list)
-    assert len(entries) == 16, f"Expected 16 golden entries, got {len(entries)}"
+    assert len(entries) == 20, f"Expected 20 golden entries, got {len(entries)}"
 
     ids = [e.get("id") for e in entries]
-    expected_ids = [f"g{i:02d}" for i in range(1, 17)]
-    assert ids == expected_ids, f"Golden query IDs must be g01..g16, got {ids}"
+    expected_ids = [f"g{i:02d}" for i in range(1, 21)]
+    assert ids == expected_ids, f"Golden query IDs must be g01..g20, got {ids}"
 
     entry_map = {e["id"]: e for e in entries}
     for multi_id in ["g06", "g12", "g13"]:
@@ -28,11 +28,15 @@ def test_golden_queries_json_schema():
 
     for entry in entries:
         assert "id" in entry
-        assert "turns" in entry and isinstance(entry["turns"], list) and len(entry["turns"]) >= 1
-        for turn in entry["turns"]:
-            assert "query" in turn
-            assert "expect" in turn
-            assert isinstance(turn["expect"], dict)
+        if entry.get("type") == "api":
+            assert "path" in entry and entry["path"].startswith("/api/")
+            assert "expect" in entry and isinstance(entry["expect"], dict)
+        else:
+            assert "turns" in entry and isinstance(entry["turns"], list) and len(entry["turns"]) >= 1
+            for turn in entry["turns"]:
+                assert "query" in turn
+                assert "expect" in turn
+                assert isinstance(turn["expect"], dict)
 
 
 def test_evaluator_http_status():
@@ -112,3 +116,50 @@ def test_evaluator_agents_and_inheritance():
     assert passed is False
     passed, failures = evaluate_turn_expectations({"entity_inherited": True}, 200, bad_data)
     assert passed is False
+
+
+def test_evaluator_api_expectations():
+    data = {
+        "verdict": {"verdict": "CAUTION"},
+        "zone_index": {"score": 75.0, "band": "favourable", "formula_version": "zi-1.0"},
+        "points": [{"time": "2026-09-01", "value": 28.5}, {"time": "2026-09-02", "value": 28.6}],
+        "disasters": [
+            {"id": "d1", "name": "Cyclone 1", "source_url": "https://rsmcnewdelhi.imd.gov.in/report1", "source_name": "IMD"},
+            {"id": "d2", "name": "Cyclone 2", "source_url": "https://rsmcnewdelhi.imd.gov.in/report2", "source_name": "IMD"},
+        ],
+    }
+
+    expect_pass = {
+        "json_keys": ["verdict", "zone_index", "points"],
+        "verdict_present": True,
+        "zone_index_formula_version": "zi-1.0",
+        "zone_index_band_in": ["favourable", "caution"],
+        "points_min": 2,
+        "points_min_or_note": 5,
+        "disasters_min_count": 2,
+        "disasters_all_have_sources": True,
+    }
+    # Note: points_min_or_note with 2 points and no note will fail if min is 5
+    # Let's test pass with points_min_or_note: 2
+    expect_pass["points_min_or_note"] = 2
+    passed, failures = evaluate_turn_expectations(expect_pass, 200, data)
+    assert passed is True, failures
+
+    # Test failures
+    # 1. Missing json key
+    passed, failures = evaluate_turn_expectations({"json_keys": ["missing_key"]}, 200, data)
+    assert passed is False
+    # 2. Formula version mismatch
+    passed, failures = evaluate_turn_expectations({"zone_index_formula_version": "zi-2.0"}, 200, data)
+    assert passed is False
+    # 3. Band not allowed
+    passed, failures = evaluate_turn_expectations({"zone_index_band_in": ["avoid"]}, 200, data)
+    assert passed is False
+    # 4. Missing verdict
+    passed, failures = evaluate_turn_expectations({"verdict_present": True}, 200, {"verdict": None})
+    assert passed is False
+    # 5. Missing source
+    bad_disasters = [{"id": "d1", "source_url": ""}]
+    passed, failures = evaluate_turn_expectations({"disasters_all_have_sources": True}, 200, {"disasters": bad_disasters})
+    assert passed is False
+

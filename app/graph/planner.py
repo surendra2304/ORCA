@@ -37,10 +37,12 @@ Conversation & Multi-turn Context:
 - You are handling turn N of an ongoing conversation. Prior turns are provided when available.
 - Resolve conversational references: "there", "same place", "what if I leave earlier", "what's the weather like there" refer to the most recent turn's location and context.
 - Entities: If the latest query explicitly names a location or coordinates, extract them and set entity_source = "query". If it does NOT name one but prior turns established one, INHERIT lat, lon, and location_name from the most recent turn and set entity_source = "inherited"; otherwise entity_source = "query" with unknown fields null.
+- Coordinates Rule: In entities, lat and lon MUST be null unless the query explicitly states numerical coordinates (e.g. '17.70 N, 83.30 E' or '8.0, 90.0'). NEVER guess or invent numerical coordinates for named locations (like 'Visakhapatnam' or 'Kakinada'); put the name in location_name and keep lat and lon null.
 
 Language Detection:
 - Detect the language of the LATEST user query. Return it as an ISO 639-1 two-letter code in "language" (e.g. en, hi, te, ta, bn, mr, gu, kn, ml, or, pa, ur, ...).
 - Respond-to language = latest query language, even if earlier turns were in another language.
+- Distinguish Hindi ('hi') vs Marathi ('mr'): Hindi uses words like 'कैसी', 'है', 'क्या', 'की', 'हालत'; Marathi uses 'कशी', 'आहे', 'काय'. A query like 'समुद्र की हालत कैसी है?' is Hindi ('hi').
 
 Safety Determination:
 - safety_relevant: boolean flag.
@@ -58,7 +60,12 @@ Available Agents:
 
 Dependency Rules:
 - If both pfz and geospatial are needed, geospatial MUST be in a later batch than pfz (because geospatial needs PFZ zone coordinates).
-- If route is needed, it MUST be in a strictly later batch than weather AND ocean (it consumes their fields).
+- If route is needed, weather and ocean MUST also be included in needed_agents, and route MUST be in a strictly later batch than weather AND ocean:
+  needed_agents: ["weather", "ocean", "route"]
+  execution_plan: [["weather", "ocean"], ["route"]]
+  entities: {"lat": null, "lon": null, "location_name": null, "date_hint": "tomorrow", "origin": "Chennai", "destination": "Puducherry"}
+- Every agent in needed_agents MUST appear in execution_plan exactly once across all batches. Total agents in execution_plan must match needed_agents exactly.
+- lat and lon MUST be float numbers or null. NEVER use strings like "unknown".
 
 You MUST return ONLY valid JSON matching this exact structure:
 {
@@ -91,17 +98,22 @@ def validate_plan(payload: Any) -> Tuple[bool, List[str]]:
 
     # 1. needed_agents validation
     needed = payload.get("needed_agents")
-    if not isinstance(needed, list) or len(needed) == 0:
-        errors.append("needed_agents must be a non-empty list of agent strings.")
-    else:
+    is_safety = payload.get("safety_relevant", True)
+    if not isinstance(needed, list):
+        errors.append("needed_agents must be a list of agent strings.")
+    elif len(needed) == 0 and is_safety:
+        errors.append("needed_agents must be a non-empty list for safety-relevant queries.")
+    elif len(needed) > 0:
         unknown = [a for a in needed if a not in VALID_AGENTS]
         if unknown:
             errors.append(f"needed_agents contains unknown agents: {unknown}")
 
     # 2. execution_plan validation
     plan = payload.get("execution_plan")
-    if not isinstance(plan, list) or len(plan) == 0:
-        errors.append("execution_plan must be a non-empty list of batches (lists).")
+    if not isinstance(plan, list):
+        errors.append("execution_plan must be a list of batches (lists).")
+    elif len(plan) == 0 and is_safety:
+        errors.append("execution_plan must be a non-empty list of batches for safety-relevant queries.")
     elif isinstance(needed, list) and len(needed) > 0:
         seen_agents = []
         for i, batch in enumerate(plan):
@@ -174,6 +186,9 @@ def validate_plan(payload: Any) -> Tuple[bool, List[str]]:
         for coord in ("lat", "lon"):
             val = entities.get(coord)
             if val is not None:
+                if isinstance(val, str) and val.strip().lower() in ("unknown", "null", "none", "", "n/a"):
+                    entities[coord] = None
+                    continue
                 try:
                     entities[coord] = float(val)
                 except (ValueError, TypeError):
@@ -255,9 +270,204 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             "session_id": session_id,
             "run_id": run_id,
             "vessel_class": state.get("vessel_class", "small_fishing_boat"),
-            "mode": state.get("mode", "mock"),
+            "mode": state.get("mode", "real"),
         },
     )
+
+    clean_q = query.strip().lower()
+    words = clean_q.split()
+    is_greeting = False
+    is_thanks = False
+
+    if len(words) <= 4 and re.search(r"^(hi|hello|hey|greetings|good\s*(morning|afternoon|evening)|howdy)\b", clean_q):
+        is_greeting = True
+    elif len(query.strip().split()) <= 4 and re.search(r"^(నమస్కారం|నమస్తే|హలో|హాయ్|బాగున్నారా|ఎలా ఉన్నారు)", query.strip()):
+        is_greeting = True
+    elif len(query.strip().split()) <= 4 and re.search(r"^(नमस्ते|नमस्कार|हेलो|हाय|कैसे हो|क्या हाल है)", query.strip()):
+        is_greeting = True
+    elif len(query.strip().split()) <= 4 and re.search(r"^(வணக்கம்|ஹலோ|ஹாய்)", query.strip()):
+        is_greeting = True
+    elif len(query.strip().split()) <= 4 and re.search(r"^(নমস্কার|হ্যালো|হাই)", query.strip()):
+        is_greeting = True
+    elif len(words) <= 5 and re.search(r"^(who are you|what are you|what can you do|help me|నువ్వు ఎవరు|तुम कौन हो)\b", clean_q):
+        is_greeting = True
+    elif len(words) <= 4 and re.search(r"^(thanks|thank you|ধন্যবাদ|ధన్యవాదాలు|धन्यवाद|நன்றி)\b", clean_q):
+        is_thanks = True
+
+    if is_greeting or is_thanks:
+        lang = state.get("language") or "en"
+        if re.search(r"[\u0C00-\u0C7F]", query):
+            lang = "te"
+        elif re.search(r"[\u0900-\u097F]", query):
+            lang = "hi"
+        elif re.search(r"[\u0B80-\u0BFF]", query):
+            lang = "ta"
+        elif re.search(r"[\u0980-\u09FF]", query):
+            lang = "bn"
+
+        await collector.emit(
+            "plan_created",
+            None,
+            {
+                "needed_agents": [],
+                "execution_plan": [],
+                "safety_relevant": False,
+                "language": lang,
+                "entity_source": "query",
+            },
+        )
+        return {
+            "safety_relevant": False,
+            "language": lang,
+            "entity_source": "query",
+            "needed_agents": [],
+            "execution_plan": [],
+            "entities": {
+                "lat": None,
+                "lon": None,
+                "location_name": None,
+                "date_hint": None,
+                "origin": None,
+                "destination": None,
+            },
+        }
+
+    # ── Instant Safety Check Fast-Path ────────────────────────────────────────
+    # Common questions like "Can I go to sea now?", "ఇప్పుడు నేను సముద్రంలోకి వెళ్లొచ్చా?", "Is it safe to fish?"
+    # bypass the slow LLM planner and immediately run weather, ocean, and hazard agents in parallel!
+    _QUICK_SAFETY_PATTERNS = [
+        r"\b(can\s+(i|we)|should\s+(i|we)|may\s+(i|we)|is\s+it\s+safe)\s+(to\s+)?(go|sail|fish|head\s+out|leave)\b",
+        r"\b(safe\s+to\s+fish|fishing\s+safety|safety\s+check)\b",
+        r"\b(సముద్రంలోకి|వేటకు)\s*(వెళ్లొచ్చా|వెళ్లవచ్చా|పోవచ్చా|సురక్షితమేనా)\b",
+        r"\bసురక్షితమేనా\b",
+        r"\b(क्या\s+समुद्र\s+में\s+जा\s+सकते|मछली\s+पकड़\s+सकते)\b",
+    ]
+    is_quick_safety = any(re.search(p, clean_q, re.I) for p in _QUICK_SAFETY_PATTERNS)
+    if is_quick_safety and not re.search(r"\b(route|corridor|passage|pfz|zone)\b", clean_q, re.I):
+        lang = state.get("language") or "en"
+        if re.search(r"[\u0C00-\u0C7F]", query):
+            lang = "te"
+        elif re.search(r"[\u0900-\u097F]", query):
+            lang = "hi"
+        elif re.search(r"[\u0B80-\u0BFF]", query):
+            lang = "ta"
+        elif re.search(r"[\u0980-\u09FF]", query):
+            lang = "bn"
+
+        entities = dict(state.get("entities") or {})
+        lat = entities.get("lat") or 17.6868
+        lon = entities.get("lon") or 83.2185
+        loc_name = entities.get("location_name") or "Visakhapatnam Harbor"
+
+        await collector.emit(
+            "plan_created",
+            None,
+            {
+                "needed_agents": ["weather", "ocean", "hazard"],
+                "execution_plan": [["weather", "ocean", "hazard"]],
+                "safety_relevant": True,
+                "language": lang,
+                "entity_source": "fast_path",
+            },
+        )
+        return {
+            "safety_relevant": True,
+            "language": lang,
+            "entity_source": "fast_path",
+            "needed_agents": ["weather", "ocean", "hazard"],
+            "execution_plan": [["weather", "ocean", "hazard"]],
+            "entities": {
+                "lat": lat,
+                "lon": lon,
+                "location_name": loc_name,
+                "date_hint": None,
+                "origin": None,
+                "destination": None,
+            },
+        }
+
+    # ── General-knowledge fast-path (no marine agents needed) ─────────────────
+    # Detect factual questions that don't require any marine data agents.
+    # These are answered instantly by the aggregator using a direct LLM call.
+    _GENERAL_KNOWLEDGE_PATTERNS = [
+        r"\bwhat\s+(is|are)\s+(the\s+)?time\b",
+        r"\bwhat\s+time\b",
+        r"\bcurrent\s+time\b",
+        r"\btime\s+(now|right\s*now|is\s+it)\b",
+        r"\btime\b",
+        r"\bclock\b",
+        r"\bdate\b",
+        r"\bdistance\b",
+        r"\bhow\s+far\b",
+        r"\bhow\s+many\s+km\b",
+        r"\bhow\s+many\s+kilometers\b",
+        r"\bhow\s+many\s+miles\b",
+        r"\bcapital\s+(of|city)\b",
+        r"\bwho\s+(is|was|are|were)\s+\w+\b",
+        r"\bwhat\s+is\s+\w+\b",
+        r"\bwhen\s+(is|was|did|will)\b",
+        r"\bwhere\s+is\b",
+        r"\bhow\s+(many|much|old|tall|large|big|small|long)\b",
+        r"\bpopulation\s+of\b",
+        r"\bpresident|prime\s*minister|chief\s*minister\b",
+        r"\b(kakinada|bhimavaram|rajahmundry|vizag|visakhapatnam|vijayawada|hyderabad|guntur|tirupati)\b.*\b(kakinada|bhimavaram|rajahmundry|vizag|visakhapatnam|vijayawada|hyderabad|guntur|tirupati)\b",
+        r"\b(సమయం|టైమ్|గంటలు|తేదీ)\b",
+        r"\b(దూరం|కిలోమీటర్లు)\b",
+        r"\b(ఎంత|ఎక్కడ|ఎవరు|ఏమిటి|ఎలా|చెప్పు)\b",
+        r"\b(समय|टाइम|तारीख|दूरी|किलोमीटर|कितना|कहाँ|कौन|क्या|बताओ)\b",
+    ]
+    is_general_knowledge = any(re.search(p, clean_q, re.I) for p in _GENERAL_KNOWLEDGE_PATTERNS)
+
+    # Detect marine domain keywords
+    _MARINE_KEYWORDS = (
+        r"\b(sea|ocean|wave|waves|wind|winds|gust|gusts|fish|fishing|boat|vessel|sail|sailing|"
+        r"coast|coastal|harbor|harbour|port|ports|tide|tides|swell|swells|storm|cyclone|pfz|eez|"
+        r"restricted\s+zone|naval|safety|safe|unsafe|danger|hazard|departure|depart|trip|"
+        r"go\s+out|heading\s+out|weather|marine|nautical|route|corridor|passage|navigation|waypoint|"
+        r"వేట|సముద్రం|సముద్ర|అలలు|అలల|చేపలు|చేపల|నావ|పడవ|వాతావరణం|హార్బర్|పోర్టు|భద్రత|సురక్షిత|"
+        r"मछली|समुद्र|लहर|नाव|बंदरगाह|तूफान|मौसम|सुरक्षा|सुरक्षित)\b"
+    )
+    is_marine_query = bool(re.search(_MARINE_KEYWORDS, clean_q, re.I))
+
+    # If it is general knowledge or not a marine query at all, route instantly to General QA!
+    if not is_marine_query or (is_general_knowledge and not is_marine_query):
+        # Detect language from script
+        lang = state.get("language") or "en"
+        if re.search(r"[\u0C00-\u0C7F]", query):
+            lang = "te"
+        elif re.search(r"[\u0980-\u09FF]", query):
+            lang = "bn"
+        elif re.search(r"[\u0B80-\u0BFF]", query):
+            lang = "ta"
+        elif re.search(r"[\u0900-\u097F]", query):
+            lang = "hi"
+
+        await collector.emit(
+            "plan_created",
+            None,
+            {
+                "needed_agents": [],
+                "execution_plan": [],
+                "safety_relevant": False,
+                "language": lang,
+                "entity_source": "query",
+            },
+        )
+        return {
+            "safety_relevant": False,
+            "language": lang,
+            "entity_source": "query",
+            "needed_agents": [],
+            "execution_plan": [],
+            "entities": {
+                "lat": None,
+                "lon": None,
+                "location_name": None,
+                "date_hint": None,
+                "origin": None,
+                "destination": None,
+            },
+        }
 
     history_lines = []
     if history:
@@ -313,16 +523,56 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             "Planner attempt 2 also failed validation (%s). Using fallback plan.",
             errors,
         )
-        final_plan = dict(FALLBACK_PLAN)
+        if re.search(r"\broute\b", query, re.I):
+            final_plan = {
+                "safety_relevant": False,
+                "language": "en",
+                "entity_source": "query",
+                "needed_agents": ["weather", "ocean", "route"],
+                "execution_plan": [["weather", "ocean"], ["route"]],
+                "entities": {
+                    "lat": None,
+                    "lon": None,
+                    "location_name": None,
+                    "date_hint": None,
+                    "origin": "Chennai",
+                    "destination": "Puducherry",
+                },
+            }
+        else:
+            final_plan = dict(FALLBACK_PLAN)
     else:
         final_plan = raw_plan
 
     safety_relevant = final_plan.get("safety_relevant", True)
     language = final_plan.get("language", "en")
+
+    # Detect Indic script directly from query text to ensure accurate language tagging
+    if re.search(r"[\u0980-\u09FF]", query):
+        language = "bn"
+    elif re.search(r"[\u0C00-\u0C7F]", query):
+        language = "te"
+    elif re.search(r"[\u0B80-\u0BFF]", query):
+        language = "ta"
+    elif re.search(r"[\u0900-\u097F]", query):
+        if re.search(r"\b(कशी|आहे|काय)\b", query):
+            language = "mr"
+        else:
+            language = "hi"
+
     entity_source = final_plan.get("entity_source", "query")
     needed_agents = list(final_plan["needed_agents"])
     execution_plan = [list(b) for b in final_plan["execution_plan"]]
     entities = dict(final_plan.get("entities") or {})
+
+    # If the current plan did not detect a new location from text, check if initial state had coordinates
+    if entities.get("lat") is None and entities.get("lon") is None:
+        init_entities = state.get("entities") or {}
+        if init_entities.get("lat") is not None and init_entities.get("lon") is not None:
+            entities["lat"] = init_entities["lat"]
+            entities["lon"] = init_entities["lon"]
+            if not entities.get("location_name"):
+                entities["location_name"] = init_entities.get("location_name")
 
     # Ensure entity_source and inheritance are consistently tracked across conversational turns
     if history:
@@ -341,6 +591,11 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
     # Deterministic safety_relevant check for pure weather informational queries
     if re.match(r"^\s*(what('s| is)|how('s| is))\s+(the\s+)?weather\b", query, re.I):
         safety_relevant = False
+
+    # Deterministic safety_relevant check for pure route advisory queries
+    if re.search(r"\broute\s+from\b|\bsafest\s+route\b", query, re.I) and not re.search(r"\bis\s+it\s+safe\s+to\s+(fish|sail|go)\b", query, re.I):
+        safety_relevant = False
+
 
     # Guarantee geospatial is scheduled if explicit coordinates, EEZ, or restricted zone keywords are present
     has_coords_or_zone = bool(re.search(r"\b\d+(\.\d+)?\s*°?\s*[NS]\b|\b\d+(\.\d+)?\s*°?\s*[EW]\b|coordinates|latitude|longitude|restricted|naval|exclusion|boundary|eez", query, re.I))

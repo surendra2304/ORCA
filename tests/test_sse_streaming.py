@@ -44,7 +44,7 @@ def test_post_query_async_returns_fast():
     async def _test():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             t0 = time.perf_counter()
-            resp = await client.post("/query", json={"text": "Quick async test query", "language": "en"})
+            resp = await client.post("/query", json={"text": "Quick async test query", "language": "en", "mode": "mock"})
             elapsed_ms = (time.perf_counter() - t0) * 1000
 
             assert resp.status_code == 200
@@ -61,7 +61,7 @@ def test_post_query_sync_fallback():
     """POST /query?sync=true preserves the Phase 1 synchronous execution format."""
     async def _test():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/query?sync=true", json={"text": "Sync query test", "language": "en"})
+            resp = await client.post("/query?sync=true", json={"text": "Sync query test", "language": "en", "mode": "mock"})
             assert resp.status_code == 200
             data = resp.json()
             assert "session_id" in data
@@ -98,7 +98,7 @@ def test_sse_streaming_lifecycle_and_monotonic_sequence():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             post_resp = await client.post(
                 "/query",
-                json={"text": "Is it safe to fish near Kakinada tomorrow?", "language": "en"},
+                json={"text": "Is it safe to fish near Kakinada tomorrow?", "language": "en", "mode": "mock"},
             )
             assert post_resp.status_code == 200
             resp_json = post_resp.json()
@@ -152,7 +152,7 @@ def test_sse_stream_replay_for_finished_session():
             # Run query and consume first stream to completion
             post_resp = await client.post(
                 "/query",
-                json={"text": "Replay test query for Chennai coast", "language": "en"},
+                json={"text": "Replay test query for Chennai coast", "language": "en", "mode": "mock"},
             )
             session_id = post_resp.json()["session_id"]
 
@@ -191,7 +191,7 @@ def test_crash_safety_agent_failure_resilience(monkeypatch):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             post_resp = await client.post(
                 "/query",
-                json={"text": "Check weather and ocean for Visakhapatnam", "language": "en"},
+                json={"text": "Check weather and ocean for Visakhapatnam", "language": "en", "mode": "mock"},
             )
             session_id = post_resp.json()["session_id"]
 

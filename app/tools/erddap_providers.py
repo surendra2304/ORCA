@@ -261,6 +261,96 @@ class ErddapProvider:
         dataset_id = settings.INCOIS_ERDDAP_CHL_DATASET.strip()
         return await self._fetch_and_extract(dataset_id, lat, lon, "chl")
 
+    async def get_sst_series(self, lat: float, lon: float, days: int) -> List[Dict[str, Any]]:
+        """
+        Queries ERDDAP for SST daily mean timeseries over past N days.
+        Returns list of {"date": "YYYY-MM-DD", "value": float | None}.
+        """
+        if not self.is_sst_configured:
+            return []
+        dataset_id = settings.INCOIS_ERDDAP_SST_DATASET.strip()
+        url = f"{self.base_url}/griddap/{dataset_id}.json"
+        client = get_client()
+        try:
+            response = await client.get(url, timeout=settings.HTTP_TIMEOUT_S)
+            if response.status_code >= 400:
+                raise ProviderError(f"HTTP {response.status_code} from ERDDAP endpoint {url}")
+            data = response.json()
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError(f"ERDDAP timeseries request failed for {url}: {exc}") from exc
+
+        return parse_erddap_timeseries(data, lat, lon, "sst")
+
+
+def parse_erddap_timeseries(data: Any, lat: float, lon: float, var_type: str = "sst") -> List[Dict[str, Any]]:
+    """
+    Parses ERDDAP JSON response into daily mean time series:
+    [{"date": "YYYY-MM-DD", "value": float | None}, ...]
+    sorted by date ascending.
+    """
+    from collections import defaultdict
+
+    if not isinstance(data, dict):
+        return []
+
+    if "table" not in data or not isinstance(data["table"], dict):
+        return []
+
+    table = data["table"]
+    col_names = table.get("columnNames")
+    rows = table.get("rows")
+    if not isinstance(col_names, list) or not isinstance(rows, list) or not rows:
+        return []
+
+    cols_lower = [str(c).strip().lower() for c in col_names]
+    lat_idx = _find_col_idx(cols_lower, ["latitude", "lat"])
+    lon_idx = _find_col_idx(cols_lower, ["longitude", "lon"])
+    time_idx = _find_col_idx(cols_lower, ["time", "timestamp", "date"])
+
+    if var_type == "sst":
+        var_idx = _find_col_idx(cols_lower, ["sst", "sea_surface_temperature", "temp", "temperature"])
+    else:
+        var_idx = _find_col_idx(cols_lower, ["chlorophyll_a", "chlorophyll", "chl"])
+
+    if var_idx is None:
+        coord_indices = {lat_idx, lon_idx, time_idx} - {None}
+        remaining = [i for i in range(len(cols_lower)) if i not in coord_indices]
+        if len(remaining) == 1:
+            var_idx = remaining[0]
+
+    if time_idx is None or var_idx is None:
+        return []
+
+    req_len = max(time_idx, var_idx) + 1
+    daily_values: Dict[str, List[float]] = defaultdict(list)
+    null_dates: set = set()
+
+    for r in rows:
+        if len(r) < req_len:
+            continue
+        raw_t = str(r[time_idx]) if r[time_idx] is not None else ""
+        date_str = raw_t[:10]
+        val = r[var_idx]
+        if len(date_str) == 10 and date_str[4] == "-" and date_str[7] == "-":
+            if val is not None:
+                try:
+                    daily_values[date_str].append(float(val))
+                except (ValueError, TypeError):
+                    null_dates.add(date_str)
+            else:
+                null_dates.add(date_str)
+
+    all_dates = sorted(set(daily_values.keys()) | null_dates)
+    points = []
+    for d in all_dates:
+        vals = daily_values.get(d, [])
+        mean_val = round(sum(vals) / len(vals), 2) if vals else None
+        points.append({"date": d, "value": mean_val})
+
+    return points
+
 
 async def get_authoritative_ocean_enrichment(
     lat: float,

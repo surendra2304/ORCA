@@ -283,5 +283,55 @@
         }
       }
     ]
+  },
+  {
+    "id": "g17",
+    "type": "api",
+    "mode": "mock",
+    "notes": "briefing mock -> status 200, verdict present, zone_index formula_version zi-1.0, zone_index band in [favourable, caution, avoid]",
+    "path": "/api/briefing?lat=16.98&lon=82.24&vessel_class=small_fishing_boat&mode=mock",
+    "expect": {
+      "http_status": 200,
+      "verdict_present": true,
+      "zone_index_formula_version": "zi-1.0",
+      "zone_index_band_in": ["favourable", "caution", "avoid"],
+      "json_keys": ["summary", "verdict", "zone_index", "layers", "generated_at", "cached"]
+    }
+  },
+  {
+    "id": "g18",
+    "type": "api",
+    "mode": "mock",
+    "notes": "timeseries sst mock -> status 200, points_min_or_note 5, json_keys variable, points, source, generated_at",
+    "path": "/api/timeseries?lat=16.98&lon=82.24&variable=sst&days=30&mode=mock",
+    "expect": {
+      "http_status": 200,
+      "points_min_or_note": 5,
+      "json_keys": ["variable", "points", "days", "source", "generated_at"]
+    }
+  },
+  {
+    "id": "g19",
+    "type": "api",
+    "mode": "mock",
+    "notes": "zones mock -> status 200, schema keys zones, count, generated_at",
+    "path": "/api/zones?lat=16.98&lon=82.24&max=5&mode=mock",
+    "expect": {
+      "http_status": 200,
+      "json_keys": ["zones", "count", "generated_at"]
+    }
+  },
+  {
+    "id": "g20",
+    "type": "api",
+    "mode": "mock",
+    "notes": "disasters -> status 200, >= 5 events, all have sources",
+    "path": "/api/disasters",
+    "expect": {
+      "http_status": 200,
+      "disasters_min_count": 5,
+      "disasters_all_have_sources": true,
+      "json_keys": ["disasters", "count"]
+    }
   }
 ]

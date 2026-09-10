@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 .pnp
 .pnp.js
@@ -32,3 +32,10 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+# Runtime data, sessions & traces
+runs/
+sessions/
+*.mp3
+pdf_text.txt
+scripts/extract_pdf.py

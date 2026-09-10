@@ -83,6 +83,11 @@ class RouteAgent(MockAgent):
         orig_ent = entities.get("origin") or {}
         dest_ent = entities.get("destination") or {}
 
+        if isinstance(orig_ent, str):
+            orig_ent = {"name": orig_ent, "location_name": orig_ent}
+        if isinstance(dest_ent, str):
+            dest_ent = {"name": dest_ent, "location_name": dest_ent}
+
         orig_name = orig_ent.get("name") or orig_ent.get("location_name") or "Chennai"
         dest_name = dest_ent.get("name") or dest_ent.get("location_name") or "Puducherry"
 
@@ -162,7 +167,7 @@ class RouteAgent(MockAgent):
             logger.error("Error emitting agent_started for %s: %s", self.name, exc)
 
         # 2. Simulate realistic network latency in mock mode
-        mode = state.get("mode", "mock")
+        mode = state.get("mode", "real")
         if mode == "mock":
             await asyncio.sleep(random.uniform(0.5, 1.0))
 

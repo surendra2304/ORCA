@@ -1,7 +1,7 @@
 # ORCA Evaluation Report
 
 **Base URL:** `http://127.0.0.1:8000`  
-**Summary:** Total: 16 | Passed: 16 | Failed: 0 | Skipped: 0  
+**Summary:** Total: 20 | Passed: 19 | Failed: 0 | Skipped: 1  
 
 | ID | Status | Checks | Failure / Notes |
 |---|---|---|---|
@@ -18,8 +18,12 @@
 | g11 | **PASS** | 1/1 | All checks passed |
 | g12 | **PASS** | 4/4 | All checks passed |
 | g13 | **PASS** | 3/3 | All checks passed |
-| g14 | **PASS** | 1/1 | All checks passed |
+| g14 | **SKIP** | 0/0 | Skipped in --offline mode |
 | g15 | **PASS** | 2/2 | All checks passed |
 | g16 | **PASS** | 3/3 | All checks passed |
+| g17 | **PASS** | 5/5 | All checks passed |
+| g18 | **PASS** | 3/3 | All checks passed |
+| g19 | **PASS** | 2/2 | All checks passed |
+| g20 | **PASS** | 4/4 | All checks passed |
 
 **Final Verdict:** PASSED

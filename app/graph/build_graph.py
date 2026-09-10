@@ -95,6 +95,9 @@ async def run_graph(
     run_id: Optional[str] = None,
     vessel_class: str = "small_fishing_boat",
     mode: Optional[str] = None,
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+    location_name: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], int]:
     """
     Helper function that initializes state, invokes the LangGraph workflow
@@ -118,7 +121,12 @@ async def run_graph(
         "mode": effective_mode,
         "safety_relevant": True,
         "verdict": None,
-        "entities": {"lat": None, "lon": None, "location_name": None, "date_hint": None},
+        "entities": {
+            "lat": lat if lat is not None else None,
+            "lon": lon if lon is not None else None,
+            "location_name": location_name if location_name is not None else None,
+            "date_hint": None,
+        },
         "history": history,
         "needed_agents": [],
         "execution_plan": [],

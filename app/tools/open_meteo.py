@@ -195,3 +195,80 @@ async def get_ocean(lat: float, lon: float) -> Dict[str, Any]:
         "chlorophyll_mg_m3": None,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+async def get_sst_timeseries_open_meteo(
+    lat: float,
+    lon: float,
+    days: int = 30,
+    mode: str = "mock",
+) -> List[Dict[str, Any]]:
+    """
+    Fetches SST timeseries from Open-Meteo Marine API with past_days=days (capped at 92).
+    Downsamples hourly values to daily mean, preserving nulls.
+    In mock mode, returns deterministic synthetic series over past N days.
+    """
+    from datetime import date, timedelta
+    days = max(1, min(92, int(days)))
+
+    if mode == "mock":
+        today = date.today()
+        points = []
+        base_sst = 28.5 - abs(lat - 15.0) * 0.1
+        for i in range(days - 1, -1, -1):
+            d = today - timedelta(days=i)
+            # deterministic slight daily fluctuation
+            variation = round(((i * 7) % 11 - 5) * 0.08, 2)
+            val = round(base_sst + variation, 2)
+            points.append({"date": d.isoformat(), "value": val})
+        return points
+
+    # Real mode
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "hourly": "sea_surface_temperature",
+        "past_days": days,
+        "forecast_days": 1,
+        "timezone": "Asia/Kolkata",
+    }
+
+    try:
+        data = await fetch_json(
+            OPEN_METEO_MARINE_URL,
+            params=params,
+            cache_ttl_s=settings.CACHE_TTL_S,
+            provider="open-meteo:marine",
+        )
+    except FetchError as fe:
+        logger.warning("Open-Meteo marine timeseries fetch error: %s", fe)
+        return []
+
+    hourly = data.get("hourly", {}) if isinstance(data, dict) else {}
+    times = hourly.get("time", [])
+    ssts = hourly.get("sea_surface_temperature", [])
+
+    from collections import defaultdict
+    daily_values: Dict[str, List[float]] = defaultdict(list)
+    null_dates: set = set()
+
+    for t_str, sst_val in zip(times, ssts):
+        date_str = str(t_str)[:10]
+        if len(date_str) == 10 and date_str[4] == "-" and date_str[7] == "-":
+            if sst_val is not None:
+                try:
+                    daily_values[date_str].append(float(sst_val))
+                except (ValueError, TypeError):
+                    null_dates.add(date_str)
+            else:
+                null_dates.add(date_str)
+
+    all_dates = sorted(set(daily_values.keys()) | null_dates)
+    points = []
+    for d in all_dates:
+        vals = daily_values.get(d, [])
+        mean_val = round(sum(vals) / len(vals), 2) if vals else None
+        points.append({"date": d, "value": mean_val})
+
+    return points[-days:] if len(points) > days else points
+

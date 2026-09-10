@@ -42,7 +42,7 @@ async def resolver_node(state: ORCAState, collector: TraceCollector) -> Dict[str
       and emits agent_started/agent_result events for 'resolver'.
       On failure, leaves entities unresolved so downstream agents error cleanly.
     """
-    mode = state.get("mode", "mock")
+    mode = state.get("mode", "real")
     if mode == "mock":
         return {}
 
@@ -85,6 +85,24 @@ async def resolver_node(state: ORCAState, collector: TraceCollector) -> Dict[str
                         "source": "nominatim",
                     },
                 )
+        else:
+            # Fallback for coastal fishermen queries without explicit location in real mode
+            base_lat = 17.6868
+            base_lon = 83.2185
+            base_name = "Visakhapatnam Harbor"
+            entities["lat"] = base_lat
+            entities["lon"] = base_lon
+            entities["location_name"] = base_name
+            await collector.emit("agent_started", "resolver", {})
+            await collector.emit(
+                "agent_result",
+                "resolver",
+                {
+                    "status": "ok",
+                    "summary": f"Using default coastal base port {base_name} ({base_lat:.4f}, {base_lon:.4f})",
+                    "source": "default_port",
+                },
+            )
 
     # Geocode origin/destination for route queries if present and coordinates missing
     for endpoint_key in ("origin", "destination"):

@@ -39,7 +39,7 @@ class WeatherAgent(MockAgent):
         return f"Wind {payload.get('wind_knots')} kts, gusts {payload.get('gusts_knots')} kts, rain {payload.get('rain_mm')} mm, lightning risk {payload.get('lightning_risk')}."
 
     async def run(self, emit: TraceCollector, state: ORCAState) -> Dict[str, Any]:
-        mode = state.get("mode", "mock")
+        mode = state.get("mode", "real")
         if mode == "mock":
             return await super().run(emit, state)
 

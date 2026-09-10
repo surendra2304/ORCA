@@ -40,23 +40,39 @@ async def run_evaluation(
     print(f"Total entries: {len(golden_entries)} | Mode filter: {mode_filter} | Offline: {offline}")
     print("=" * 75)
 
-    async with httpx.AsyncClient(base_url=base_url, timeout=60.0) as client:
-        # Check server health first
-        try:
-            h_resp = await client.get("/health")
-            if h_resp.status_code != 200:
-                print(f"Warning: Health check returned {h_resp.status_code}")
-        except Exception as exc:
-            if not offline:
-                print(f"Error connecting to server at {base_url}: {exc}")
-                return 1
+    # Check if external server is running, or fall back to in-process ASGITransport
+    server_running = False
+    try:
+        async with httpx.AsyncClient(base_url=base_url, timeout=3.0) as check_c:
+            h = await check_c.get("/health")
+            if h.status_code == 200:
+                server_running = True
+    except Exception:
+        server_running = False
+
+    if not server_running:
+        print(f"No active server detected at {base_url}; running in-process via ASGITransport.")
+        from app.main import app
+        client_ctx = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test", timeout=60.0)
+    else:
+        print(f"Connected to live server at {base_url}.")
+        client_ctx = httpx.AsyncClient(base_url=base_url, timeout=60.0)
+
+    async with client_ctx as client:
+
 
         for entry in golden_entries:
             entry_id = entry.get("id", "unknown")
+            entry_type = entry.get("type", "chat")
             turns = entry.get("turns", [])
 
             # Check mode filter
-            entry_modes = [t.get("mode", "mock") for t in turns]
+            if entry_type == "api":
+                entry_mode = entry.get("mode", "mock")
+                entry_modes = [entry_mode]
+            else:
+                entry_modes = [t.get("mode", "mock") for t in turns]
+
             if mode_filter and all(m != mode_filter for m in entry_modes):
                 results.append({
                     "id": entry_id,
@@ -76,6 +92,44 @@ async def run_evaluation(
                     "details": "Skipped in --offline mode",
                 })
                 total_skipped += 1
+                continue
+
+            # API entry branch: direct GET, zero retries
+            if entry_type == "api":
+                path = entry.get("path", "")
+                expect = entry.get("expect", {})
+                num_checks = len(expect)
+                print(f"[{entry_id}] Running API call: GET {path}", flush=True)
+                try:
+                    resp = await client.get(path)
+                    status_code = resp.status_code
+                    try:
+                        data = resp.json()
+                    except Exception:
+                        data = {}
+                except Exception as req_exc:
+                    status_code = 500
+                    data = {"error": str(req_exc)}
+
+                passed, failures = evaluate_turn_expectations(expect, status_code, data)
+                if passed:
+                    total_passed += 1
+                    results.append({
+                        "id": entry_id,
+                        "status": "PASS",
+                        "checks": f"{num_checks}/{num_checks}",
+                        "details": "All checks passed",
+                    })
+                    print(f"[{entry_id}] PASS ({num_checks}/{num_checks})", flush=True)
+                else:
+                    total_failed += 1
+                    results.append({
+                        "id": entry_id,
+                        "status": "FAIL",
+                        "checks": f"0/{num_checks}",
+                        "details": "; ".join(failures),
+                    })
+                    print(f"[{entry_id}] FAIL: {'; '.join(failures)}", flush=True)
                 continue
 
             # Run turns in sequence for this entry

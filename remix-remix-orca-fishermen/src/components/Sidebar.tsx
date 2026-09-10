@@ -11,9 +11,11 @@ import {
   Menu,
   X,
 } from 'lucide-react';
+import { translations, SupportedLanguage } from '../i18n/translations';
 
 interface SidebarProps {
   currentScreen: AppScreen;
+  currentLanguage?: SupportedLanguage;
   onNavigate: (screen: AppScreen) => void;
   isOpenMobile: boolean;
   onCloseMobile: () => void;
@@ -23,17 +25,20 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentScreen,
+  currentLanguage = 'en',
   onNavigate,
   isOpenMobile,
   onCloseMobile,
   onOpenHelpModal,
 }) => {
+  const t = translations[currentLanguage] || translations.en;
+
   const navItems: { id: AppScreen; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: 'home', label: 'Home', icon: Home },
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
-    { id: 'analytics', label: 'Analytics', icon: TrendingUp },
-    { id: 'pfz-areas', label: 'PFZ Areas', icon: MapPin },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'home', label: t.nav.home, icon: Home },
+    { id: 'dashboard', label: t.nav.dashboard, icon: LayoutGrid },
+    { id: 'analytics', label: t.nav.analytics, icon: TrendingUp },
+    { id: 'pfz-areas', label: t.nav.pfzAreas, icon: MapPin },
+    { id: 'settings', label: t.nav.settings, icon: Settings },
   ];
 
   return (
@@ -58,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="text-[#0b2545] hover:opacity-80 p-1.5 rounded-lg hover:bg-slate-100 transition-colors lg:block"
+                className="text-[#0b2545] hover:opacity-80 p-1.5 rounded-lg hover:bg-slate-100 transition-colors lg:block cursor-pointer"
                 title="Sidebar navigation"
                 aria-label="Toggle menu"
               >
@@ -70,7 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {/* Mobile close icon */}
             <button
               type="button"
-              className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100"
+              className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer"
               onClick={onCloseMobile}
               aria-label="Close navigation"
             >
@@ -126,7 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Headset className="w-5 h-5" />
           </div>
           <div>
-            <h4 className="text-[14px] font-bold text-[#0b2545] leading-snug">Need Help?</h4>
+            <h4 className="text-[14px] font-bold text-[#0b2545] leading-snug">{t.nav.help}</h4>
             <p className="text-[12px] text-[#64748b] font-medium leading-none mt-0.5">
               24/7 Support
             </p>

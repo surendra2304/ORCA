@@ -28,6 +28,9 @@ async def run_graph_streaming(
     vessel_class: str = "small_fishing_boat",
     mode: Optional[str] = None,
     run_id: Optional[str] = None,
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+    location_name: Optional[str] = None,
 ) -> None:
     """
     Executes the ORCA reasoning graph as a streaming background task.
@@ -81,7 +84,12 @@ async def run_graph_streaming(
         "mode": effective_mode,
         "safety_relevant": True,
         "verdict": None,
-        "entities": {"lat": None, "lon": None, "location_name": None, "date_hint": None},
+        "entities": {
+            "lat": lat if lat is not None else None,
+            "lon": lon if lon is not None else None,
+            "location_name": location_name if location_name is not None else None,
+            "date_hint": None,
+        },
         "history": history,
         "needed_agents": [],
         "execution_plan": [],

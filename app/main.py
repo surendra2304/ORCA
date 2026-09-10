@@ -1,9 +1,12 @@
 import asyncio
 import json
 import logging
-from typing import Any, AsyncGenerator, Dict, Optional
+import re
+import time
+from typing import Any, AsyncGenerator, Dict, Optional, Tuple
 import uuid
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 import uvicorn
@@ -14,10 +17,26 @@ from app.core.rules import VESSEL_CLASSES
 from app.core.runner import run_graph_streaming, utc_iso_now
 from app.core.sessions import sessions
 from app.graph.build_graph import run_graph
+from app.api_dashboard import router as dashboard_router
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="ORCA API", version=settings.VERSION)
+app.include_router(dashboard_router)
+
+# Allow the Vite dev server (port 3000) and any localhost origin to call this API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # In-memory store of past runs keyed by run_id and session_id (capped at 100 entries)
 past_runs: Dict[str, Dict[str, Any]] = {}
@@ -30,6 +49,9 @@ class QueryRequest(BaseModel):
     vessel_class: Optional[str] = Field("small_fishing_boat", description="Vessel class for safety rules")
     mode: Optional[str] = Field(None, description="Execution mode: mock | real")
     sync: Optional[bool] = Field(None, description="Optional sync flag in body")
+    lat: Optional[float] = Field(None, description="Optional user latitude")
+    lon: Optional[float] = Field(None, description="Optional user longitude")
+    location_name: Optional[str] = Field(None, description="Optional user location or port name")
 
 
 @app.get("/health")
@@ -76,7 +98,9 @@ async def query_endpoint(req: QueryRequest, sync: bool = False):
     run_id = str(uuid.uuid4())
 
     # Register run and update latest mapping
+    t0 = time.time()
     sessions.create_run(run_id=run_id, session_id=session_id)
+    print(f"[DEBUG] create_run: {(time.time()-t0)*1000:.1f}ms")
 
     if is_sync:
         final_state, duration_ms = await run_graph(
@@ -86,6 +110,9 @@ async def query_endpoint(req: QueryRequest, sync: bool = False):
             run_id=run_id,
             vessel_class=vessel_class,
             mode=effective_mode,
+            lat=req.lat,
+            lon=req.lon,
+            location_name=req.location_name,
         )
 
         detected_lang = final_state.get("language", req.language or "en")
@@ -137,6 +164,7 @@ async def query_endpoint(req: QueryRequest, sync: bool = False):
 
     # Asynchronous streaming execution (default)
     # Immediately emit run_started envelope for run_id
+    t1 = time.time()
     run_started_envelope = {
         "run_id": run_id,
         "seq": sessions.next_seq(run_id),
@@ -152,8 +180,10 @@ async def query_endpoint(req: QueryRequest, sync: bool = False):
     }
     sessions.store_event(run_id, run_started_envelope)
     sessions.publish(run_id, run_started_envelope)
+    print(f"[DEBUG] store+publish: {(time.time()-t1)*1000:.1f}ms")
 
     # Launch background reasoning workflow
+    t2 = time.time()
     asyncio.create_task(
         run_graph_streaming(
             session_id=session_id,
@@ -163,16 +193,22 @@ async def query_endpoint(req: QueryRequest, sync: bool = False):
             sessions=sessions,
             vessel_class=vessel_class,
             mode=effective_mode,
+            lat=req.lat,
+            lon=req.lon,
+            location_name=req.location_name,
         )
     )
+    print(f"[DEBUG] create_task: {(time.time()-t2)*1000:.1f}ms")
 
-    return {
+    result = {
         "session_id": session_id,
         "run_id": run_id,
         "mode": effective_mode,
         "language": req.language or "en",
         "verdict": None,
     }
+    print(f"[DEBUG] total /query: {(time.time()-t0)*1000:.1f}ms")
+    return result
 
 
 @app.get("/stream/{target_id}")
@@ -277,5 +313,141 @@ async def get_session_details(session_id: str):
     return session_data
 
 
+# ─── Broadcast-Grade Neural TTS (edge-tts) ────────────────────────────────────
+VOICE_MAP = {
+    "te": "te-IN-ShrutiNeural",       # Telugu (India) Female
+    "hi": "hi-IN-SwaraNeural",        # Hindi (India) Female
+    "en": "en-IN-NeerjaNeural",       # Indian English Female
+    "ta": "ta-IN-PallaviNeural",      # Tamil (India) Female
+    "bn": "bn-IN-TanishaaNeural",     # Bengali (India) Female
+    "mr": "mr-IN-AarohiNeural",       # Marathi (India) Female
+    "gu": "gu-IN-DhwaniNeural",       # Gujarati (India) Female
+    "kn": "kn-IN-SapnaNeural",        # Kannada (India) Female
+    "ml": "ml-IN-SobhanaNeural",      # Malayalam (India) Female
+}
+
+try:
+    import edge_tts
+except ImportError:
+    edge_tts = None
+
+tts_cache: Dict[Tuple[str, str], bytes] = {}
+
+
+class TTSRequest(BaseModel):
+    text: str = Field(..., description="Text to synthesize")
+    language: Optional[str] = Field("en", description="ISO language code (te, hi, en, ta, etc.)")
+
+
+async def generate_tts_bytes(text: str, language: str = "en") -> bytes:
+    clean_text = re.sub(r"https?://\S+", "", text)
+
+    # Auto-detect language from script to avoid pronouncing Indic text with English voice
+    if re.search(r"[\u0C00-\u0C7F]", clean_text):
+        lang_code = "te"
+    elif re.search(r"[\u0900-\u097F]", clean_text):
+        lang_code = "hi"
+    elif re.search(r"[\u0B80-\u0BFF]", clean_text):
+        lang_code = "ta"
+    elif re.search(r"[\u0980-\u09FF]", clean_text):
+        lang_code = "bn"
+    else:
+        lang_code = (language or "en").lower()[:2]
+
+    # Map raw English machine verdict tokens and strip robotic labels for natural human speech
+    if lang_code == "te":
+        clean_text = re.sub(r"^(నిర్ణయం|తీర్పు)\s*[:\-–]?\s*", "", clean_text, flags=re.I)
+        clean_text = re.sub(r"\b(నిర్ణయం)\s*[:\-–]?\s*", "", clean_text, flags=re.I)
+        clean_text = re.sub(r"\b(NO[-_ ]?GO|NOGO)\b:?", "వేటకు వెళ్లవద్దు.", clean_text, flags=re.I)
+        clean_text = re.sub(r"\bCAUTION\b:?", "జాగ్రత్తగా ఉండండి.", clean_text, flags=re.I)
+        clean_text = re.sub(r"\bGO\b:?", "సురక్షితం.", clean_text, flags=re.I)
+        clean_text = re.sub(r"\bUNKNOWN\b:?", "సమాచారం సరిపోలేదు.", clean_text, flags=re.I)
+    elif lang_code == "hi":
+        clean_text = re.sub(r"^(निर्णय)\s*[:\-–]?\s*", "", clean_text, flags=re.I)
+        clean_text = re.sub(r"\b(निर्णय)\s*[:\-–]?\s*", "", clean_text, flags=re.I)
+        clean_text = re.sub(r"\b(NO[-_ ]?GO|NOGO)\b:?", "यात्रा न करें.", clean_text, flags=re.I)
+        clean_text = re.sub(r"\bCAUTION\b:?", "सावधानी बरतें.", clean_text, flags=re.I)
+        clean_text = re.sub(r"\bGO\b:?", "सुरक्षित है.", clean_text, flags=re.I)
+        clean_text = re.sub(r"\bUNKNOWN\b:?", "जानकारी अपर्याप्त है.", clean_text, flags=re.I)
+    elif lang_code == "ta":
+        clean_text = re.sub(r"^(தீர்ப்பு)\s*[:\-–]?\s*", "", clean_text, flags=re.I)
+        clean_text = re.sub(r"\b(தீர்ப்பு)\s*[:\-–]?\s*", "", clean_text, flags=re.I)
+        clean_text = re.sub(r"\b(NO[-_ ]?GO|NOGO)\b:?", "கடலுக்கு செல்ல வேண்டாம்.", clean_text, flags=re.I)
+        clean_text = re.sub(r"\bCAUTION\b:?", "எச்சரிக்கை.", clean_text, flags=re.I)
+        clean_text = re.sub(r"\bGO\b:?", "பாதுகாப்பானது.", clean_text, flags=re.I)
+        clean_text = re.sub(r"\bUNKNOWN\b:?", "தகவல் போதாது.", clean_text, flags=re.I)
+    elif lang_code == "en":
+        clean_text = re.sub(r"^(Verdict|Safety Verdict)\s*[:\-–]?\s*", "", clean_text, flags=re.I)
+        clean_text = re.sub(r"\b(NO[-_ ]?GO|NOGO)\b:?", "No-Go.", clean_text, flags=re.I)
+
+    clean_text = re.sub(r"[*#_`~\[\]()]", "", clean_text)
+    clean_text = re.sub(r"\s+", " ", clean_text).strip()
+    if not clean_text:
+        raise HTTPException(status_code=400, detail="Empty text provided for TTS")
+
+    voice = VOICE_MAP.get(lang_code, "en-IN-NeerjaNeural")
+
+    cache_key = (clean_text, voice)
+    if cache_key in tts_cache:
+        return tts_cache[cache_key]
+
+    if edge_tts is None:
+        raise HTTPException(status_code=503, detail="TTS service unavailable (edge_tts not installed)")
+
+    try:
+        communicate = edge_tts.Communicate(clean_text, voice)
+        audio_data = bytearray()
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_data.extend(chunk["data"])
+
+        if not audio_data:
+            raise HTTPException(status_code=500, detail="No audio returned from TTS engine")
+
+        audio_bytes = bytes(audio_data)
+        if len(tts_cache) >= 150:
+            tts_cache.pop(next(iter(tts_cache)))
+        tts_cache[cache_key] = audio_bytes
+        return audio_bytes
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"TTS synthesis error: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"TTS synthesis failed: {exc}")
+
+
+@app.get("/api/tts")
+async def tts_get(text: str = Query(..., max_length=2500), language: Optional[str] = Query("en")):
+    """
+    Returns broadcast-grade neural audio (MP3) for spoken text in Telugu, Hindi, Indian English, etc.
+    """
+    audio_bytes = await generate_tts_bytes(text, language or "en")
+    return Response(
+        content=audio_bytes,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Content-Disposition": "inline",
+        },
+    )
+
+
+@app.post("/api/tts")
+async def tts_post(req: TTSRequest):
+    """
+    POST version of TTS endpoint for longer query responses.
+    """
+    audio_bytes = await generate_tts_bytes(req.text, req.language or "en")
+    return Response(
+        content=audio_bytes,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Content-Disposition": "inline",
+        },
+    )
+
+
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+

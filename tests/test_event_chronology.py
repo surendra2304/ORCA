@@ -42,6 +42,7 @@ async def _async_test_event_chronology():
             final_state, duration_ms = await run_graph(
                 query="Check weather, ocean, pfz, satellite, and geospatial for Visakhapatnam",
                 language="en",
+                mode="mock",
             )
 
     trace = final_state.get("trace", [])
@@ -63,7 +64,7 @@ async def _async_test_event_chronology():
     # Middle events before reflection must all be agent events
     middle_events = trace[2:-4]
     assert all(
-        e["event"] in ("agent_started", "agent_result") for e in middle_events
+        e["event"] in ("agent_started", "agent_result", "tool_called") for e in middle_events
     ), f"Middle events must be agent events: {middle_events}"
 
     # (a) For Batch 1 (>= 3 agents running concurrently):

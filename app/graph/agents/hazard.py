@@ -30,7 +30,7 @@ class HazardAgent(MockAgent):
         return f"Active marine alerts ({len(alerts)}): {', '.join(types)}."
 
     async def run(self, emit: TraceCollector, state: ORCAState) -> Dict[str, Any]:
-        mode = state.get("mode", "mock")
+        mode = state.get("mode", "real")
         if mode == "mock":
             return await super().run(emit, state)
 

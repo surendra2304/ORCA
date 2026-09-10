@@ -49,7 +49,7 @@ class PFZAgent(MockAgent):
         return f"Identified {count} Potential Fishing Zone(s) with confidence {conf:.0%}."
 
     async def run(self, emit: TraceCollector, state: ORCAState) -> Dict[str, Any]:
-        mode = state.get("mode", "mock")
+        mode = state.get("mode", "real")
         if mode == "mock":
             return await super().run(emit, state)
 
