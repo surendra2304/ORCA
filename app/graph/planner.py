@@ -338,11 +338,12 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
     _QUICK_SAFETY_PATTERNS = [
         r"\b(can\s+(i|we)|should\s+(i|we)|may\s+(i|we)|is\s+it\s+safe)\s+(to\s+)?(go|sail|fish|head\s+out|leave)\b",
         r"\b(safe\s+to\s+fish|fishing\s+safety|safety\s+check)\b",
-        r"\b(సముద్రంలోకి|వేటకు)\s*(వెళ్లొచ్చా|వెళ్లవచ్చా|పోవచ్చా|సురక్షితమేనా)\b",
-        r"\bసురక్షితమేనా\b",
-        r"\b(क्या\s+समुद्र\s+में\s+जा\s+सकते|मछली\s+पकड़\s+सकते)\b",
+        r"(సముద్రంలోకి|వేటకు|సముద్రం|వేట)\s*(వెళ్లొచ్చా|వెళ్లవచ్చా|పోవచ్చా|వెళ్లవచ్చ|వెళ్లొచ్చ|సురక్షితమేనా|సురక్షితమా)",
+        r"(సురక్షితమేనా|సురక్షితమా)",
+        r"(क्या\s+समुद्र\s+में\s+जा\s+सकते|मछली\s+पकड़\s+सकते|समुद्र\s+में\s+जाना\s+सुरक्षित|सुरक्षित\s+है)",
+        r"(கடலுக்குச்\s+செல்லலாமா|மீன்பிடிக்க\s+போகலாமா|பாதுகாப்பானதா)",
     ]
-    is_quick_safety = any(re.search(p, clean_q, re.I) for p in _QUICK_SAFETY_PATTERNS)
+    is_quick_safety = any(re.search(p, query, re.I) for p in _QUICK_SAFETY_PATTERNS)
     if is_quick_safety and not re.search(r"\b(route|corridor|passage|pfz|zone)\b", clean_q, re.I):
         lang = state.get("language") or "en"
         if re.search(r"[\u0C00-\u0C7F]", query):
@@ -386,6 +387,113 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
             },
         }
 
+    # ── Instant Weather & Forecast Fast-Path ─────────────────────────────────
+    # Questions about weather, forecasts, winds, waves, or sea conditions
+    # e.g., "how is the weather today?", "ఈరోజు వాతావరణం ఎలా ఉంది?", "आज का मौसम कैसा है?", "வானிலை அறிக்கை"
+    # immediately dispatch weather, ocean, and hazard agents without slow LLM planner delay!
+    _QUICK_WEATHER_PATTERNS = [
+        # English
+        r"\b(how('s|\s+is)|what('s|\s+is))\s+(the\s+)?(weather|forecast|wind|waves?|temperature|rain|climate)\b",
+        r"\b(weather|forecast|weather\s*report|wind\s*speed|wave\s*height|sea\s*conditions?|sea\s*state)\b",
+        # Telugu (Indic scripts - NO \b!)
+        r"(వాతావరణం|వాతావరణ|వాతావరణ\s*నివేదిక|గాలి\s*వేగం|అలల\s*ఎత్తు|సముద్ర\s*పరిస్థితి|వర్షం|ఎండ|చలి|తుఫాను|తుపాను)",
+        # Hindi (Indic scripts - NO \b!)
+        r"(मौसम|पूर्वानुमान|मौसम\s*की\s*जानकारी|हवा\s*की\s*गति|लहरों\s*की\s*ऊंचाई|बारिश|समुद्र\s*की\s*स्थिति|तूफान)",
+        # Tamil (Indic scripts - NO \b!)
+        r"(வானிலை|வானிலை\s*அறிக்கை|காற்று\s*வேகம்|அலை\s*உயரம்|மழை)",
+        # Bengali (Indic scripts - NO \b!)
+        r"(আবহাওয়া|আবহাওয়ার\s*খবর|বাতাসের\s*গতি|ঢেউয়ের\s*উচ্চতা|বৃষ্টি)",
+    ]
+    is_quick_weather = any(re.search(p, query, re.I) for p in _QUICK_WEATHER_PATTERNS)
+    if is_quick_weather and not re.search(r"\b(route|corridor|passage|pfz|zone)\b", clean_q, re.I):
+        lang = state.get("language") or "en"
+        if re.search(r"[\u0C00-\u0C7F]", query):
+            lang = "te"
+        elif re.search(r"[\u0900-\u097F]", query):
+            lang = "hi"
+        elif re.search(r"[\u0B80-\u0BFF]", query):
+            lang = "ta"
+        elif re.search(r"[\u0980-\u09FF]", query):
+            lang = "bn"
+
+        entities = dict(state.get("entities") or {})
+        lat = entities.get("lat")
+        lon = entities.get("lon")
+        loc_name = entities.get("location_name")
+
+        # Check for named coastal locations in query
+        _LOC_MAP = {
+            "visakhapatnam": (17.6868, 83.2185, "Visakhapatnam Harbor"),
+            "vizag": (17.6868, 83.2185, "Visakhapatnam Harbor"),
+            "విశాఖపట్నం": (17.6868, 83.2185, "Visakhapatnam Harbor"),
+            "వైజాగ్": (17.6868, 83.2185, "Visakhapatnam Harbor"),
+            "kakinada": (16.9891, 82.2475, "Kakinada Port"),
+            "కాకినాడ": (16.9891, 82.2475, "Kakinada Port"),
+            "bhimavaram": (16.5449, 81.5212, "Bhimavaram"),
+            "భీమవరం": (16.5449, 81.5212, "Bhimavaram"),
+            "machilipatnam": (16.1875, 81.1389, "Machilipatnam Port"),
+            "మచిలీపట్నం": (16.1875, 81.1389, "Machilipatnam Port"),
+            "chennai": (13.0827, 80.2707, "Chennai Port"),
+            "చెన్నై": (13.0827, 80.2707, "Chennai Port"),
+            "mumbai": (18.9438, 72.8354, "Mumbai Port"),
+            "मुम्बई": (18.9438, 72.8354, "Mumbai Port"),
+            "kolkata": (22.5726, 88.3639, "Kolkata Port"),
+            "কলকাতা": (22.5726, 88.3639, "Kolkata Port"),
+            "kochi": (9.9312, 76.2673, "Cochin Port"),
+            "cochin": (9.9312, 76.2673, "Cochin Port"),
+            "puri": (19.8135, 85.8312, "Puri"),
+            "paradip": (20.3165, 86.6114, "Paradip Port"),
+            "mangalore": (12.9141, 74.8560, "Mangalore Port"),
+            "mangaluru": (12.9141, 74.8560, "Mangalore Port"),
+            "tuticorin": (8.7642, 78.1348, "VO Chidambaranar Port (Tuticorin)"),
+            "puducherry": (11.9416, 79.8083, "Puducherry"),
+        }
+        for k_name, (k_lat, k_lon, k_disp) in _LOC_MAP.items():
+            if re.search(r"\b" + re.escape(k_name) + r"\b", clean_q, re.I) or k_name in query:
+                lat = k_lat
+                lon = k_lon
+                loc_name = k_disp
+                break
+
+        if lat is None or lon is None:
+            lat = 17.6868
+            lon = 83.2185
+            loc_name = loc_name or "Visakhapatnam Harbor"
+
+        # Check if query also asks about sailing safety
+        asks_safety = bool(re.search(
+            r"\b(can\s+(i|we)|should\s+(i|we)|safe\s+to|safe\s+for|fishing\s+safety|సముద్రంలోకి\s*వెళ్ల|వేటకు\s*వెళ్ల|సురక్షిత|क्या\s+हम\s+जा\s+सकते|जा\s*सकते)\b",
+            query,
+            re.I
+        ))
+
+        await collector.emit(
+            "plan_created",
+            None,
+            {
+                "needed_agents": ["weather", "ocean", "hazard"],
+                "execution_plan": [["weather", "ocean", "hazard"]],
+                "safety_relevant": asks_safety,
+                "language": lang,
+                "entity_source": "fast_path",
+            },
+        )
+        return {
+            "safety_relevant": asks_safety,
+            "language": lang,
+            "entity_source": "fast_path",
+            "needed_agents": ["weather", "ocean", "hazard"],
+            "execution_plan": [["weather", "ocean", "hazard"]],
+            "entities": {
+                "lat": lat,
+                "lon": lon,
+                "location_name": loc_name,
+                "date_hint": None,
+                "origin": None,
+                "destination": None,
+            },
+        }
+
     # ── General-knowledge fast-path (no marine agents needed) ─────────────────
     # Detect factual questions that don't require any marine data agents.
     # These are answered instantly by the aggregator using a direct LLM call.
@@ -413,24 +521,27 @@ async def planner_node(state: ORCAState, collector: TraceCollector) -> Dict[str,
         r"\b(kakinada|bhimavaram|rajahmundry|vizag|visakhapatnam|vijayawada|hyderabad|guntur|tirupati)\b.*\b(kakinada|bhimavaram|rajahmundry|vizag|visakhapatnam|vijayawada|hyderabad|guntur|tirupati)\b",
         r"\b(సమయం|టైమ్|గంటలు|తేదీ)\b",
         r"\b(దూరం|కిలోమీటర్లు)\b",
-        r"\b(ఎంత|ఎక్కడ|ఎవరు|ఏమిటి|ఎలా|చెప్పు)\b",
-        r"\b(समय|टाइम|तारीख|दूरी|किलोमीटर|कितना|कहाँ|कौन|क्या|बताओ)\b",
+        r"\b(সময়|टाइम|तारीख|दूरी|किलोमीटर)\b",
     ]
     is_general_knowledge = any(re.search(p, clean_q, re.I) for p in _GENERAL_KNOWLEDGE_PATTERNS)
 
-    # Detect marine domain keywords
-    _MARINE_KEYWORDS = (
+    # Detect marine domain keywords (English uses \b, Indic scripts do NOT use \b)
+    _ENGLISH_MARINE_KEYWORDS = (
         r"\b(sea|ocean|wave|waves|wind|winds|gust|gusts|fish|fishing|boat|vessel|sail|sailing|"
         r"coast|coastal|harbor|harbour|port|ports|tide|tides|swell|swells|storm|cyclone|pfz|eez|"
         r"restricted\s+zone|naval|safety|safe|unsafe|danger|hazard|departure|depart|trip|"
-        r"go\s+out|heading\s+out|weather|marine|nautical|route|corridor|passage|navigation|waypoint|"
-        r"వేట|సముద్రం|సముద్ర|అలలు|అలల|చేపలు|చేపల|నావ|పడవ|వాతావరణం|హార్బర్|పోర్టు|భద్రత|సురక్షిత|"
-        r"मछली|समुद्र|लहर|नाव|बंदरगाह|तूफान|मौसम|सुरक्षा|सुरक्षित)\b"
+        r"go\s+out|heading\s+out|weather|marine|nautical|route|corridor|passage|navigation|waypoint)\b"
     )
-    is_marine_query = bool(re.search(_MARINE_KEYWORDS, clean_q, re.I))
+    _INDIC_MARINE_KEYWORDS = (
+        r"(వేట|సముద్రం|సముద్ర|అలలు|అలల|చేపలు|చేపల|నావ|పడవ|వాతావరణం|వాతావరణ|హార్బర్|పోర్టు|భద్రత|సురక్షిత|తుఫాను|తుపాను|గాలి|వర్షం|"
+        r"मौसम|समुद्र|लहर|नाव|बंदरगाह|तूफान|हवा|बारिश|मछली|सुरक्षा|सुरक्षित|"
+        r"வானிலை|கடல்|அலை|காற்று|மழை|மீன்பிடி|துறைமுகம்|பாதுகாப்பு|"
+        r"আবহাওয়া|সমুদ্র|ঢেউ|বাতাস|বৃষ্টি|মাছ|বন্দর|নিরাপত্তা)"
+    )
+    is_marine_query = bool(re.search(_ENGLISH_MARINE_KEYWORDS, clean_q, re.I) or re.search(_INDIC_MARINE_KEYWORDS, query))
 
-    # If it is general knowledge or not a marine query at all, route instantly to General QA!
-    if not is_marine_query or (is_general_knowledge and not is_marine_query):
+    # If it is not a marine query at all or pure general knowledge, route instantly to General QA!
+    if not is_marine_query:
         # Detect language from script
         lang = state.get("language") or "en"
         if re.search(r"[\u0C00-\u0C7F]", query):

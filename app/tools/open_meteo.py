@@ -29,7 +29,8 @@ async def get_weather(lat: float, lon: float) -> Dict[str, Any]:
     params = {
         "latitude": lat,
         "longitude": lon,
-        "hourly": "wind_speed_10m,wind_gusts_10m,precipitation,lightning_potential",
+        "current": "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+        "hourly": "temperature_2m,precipitation,weather_code,wind_speed_10m,wind_gusts_10m,lightning_potential",
         "wind_speed_unit": "kn",
         "timezone": "Asia/Kolkata",
         "forecast_days": 2,
@@ -43,31 +44,53 @@ async def get_weather(lat: float, lon: float) -> Dict[str, Any]:
         provider="open-meteo:forecast",
     )
 
+    current = data.get("current", {}) if isinstance(data, dict) else {}
     hourly = data.get("hourly", {}) if isinstance(data, dict) else {}
     times = hourly.get("time", [])
     winds = hourly.get("wind_speed_10m", [])
     gusts = hourly.get("wind_gusts_10m", [])
     precips = hourly.get("precipitation", [])
+    temps = hourly.get("temperature_2m", [])
+    codes = hourly.get("weather_code", [])
     lightnings = hourly.get("lightning_potential")
 
-    # Find the first valid hour index
+    # Find the current hour in IST
+    from datetime import timedelta
+    ist_now = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+    cur_hour_str = ist_now.strftime("%Y-%m-%dT%H:00")
+
     start_idx = 0
-    for idx, w in enumerate(winds):
-        if w is not None:
+    for idx, t in enumerate(times):
+        if t >= cur_hour_str:
             start_idx = idx
             break
+    else:
+        # Fallback for mock fixtures where timestamp might be older
+        for idx, w in enumerate(winds):
+            if w is not None:
+                start_idx = idx
+                break
 
-    first_wind = float(winds[start_idx]) if start_idx < len(winds) and winds[start_idx] is not None else 0.0
-    first_gust = (
-        float(gusts[start_idx])
-        if start_idx < len(gusts) and gusts[start_idx] is not None
-        else first_wind
-    )
-    first_precip = (
-        float(precips[start_idx])
-        if start_idx < len(precips) and precips[start_idx] is not None
-        else 0.0
-    )
+    if current.get("wind_speed_10m") is not None:
+        first_wind = float(current["wind_speed_10m"])
+    elif start_idx < len(winds) and winds[start_idx] is not None:
+        first_wind = float(winds[start_idx])
+    else:
+        first_wind = 0.0
+
+    if current.get("wind_gusts_10m") is not None:
+        first_gust = float(current["wind_gusts_10m"])
+    elif start_idx < len(gusts) and gusts[start_idx] is not None:
+        first_gust = float(gusts[start_idx])
+    else:
+        first_gust = first_wind
+
+    if current.get("precipitation") is not None:
+        first_precip = float(current["precipitation"])
+    elif start_idx < len(precips) and precips[start_idx] is not None:
+        first_precip = float(precips[start_idx])
+    else:
+        first_precip = 0.0
 
     # Determine lightning risk:
     # If variable is absent entirely or None -> None (rule engine treats as unknown)
@@ -84,6 +107,27 @@ async def get_weather(lat: float, lon: float) -> Dict[str, Any]:
         else:
             lightning_risk = "high"
 
+    def _weather_code_desc(code: Optional[int]) -> str:
+        if code is None:
+            return "Clear"
+        if code == 0:
+            return "Clear sky"
+        if code in (1, 2):
+            return "Partly cloudy"
+        if code == 3:
+            return "Overcast"
+        if code in (45, 48):
+            return "Foggy"
+        if code in (51, 53, 55):
+            return "Drizzle"
+        if code in (61, 63, 65):
+            return "Rain"
+        if code in (80, 81, 82):
+            return "Rain showers"
+        if code in (95, 96, 99):
+            return "Thunderstorm"
+        return "Moderate"
+
     # Build forecast_hours: next 24 hours (skip nulls, include what exists)
     forecast_hours = []
     end_idx = min(len(times), start_idx + 24)
@@ -91,6 +135,8 @@ async def get_weather(lat: float, lon: float) -> Dict[str, Any]:
         t_str = times[idx]
         w_val = winds[idx] if idx < len(winds) else None
         r_val = precips[idx] if idx < len(precips) else None
+        temp_val = temps[idx] if idx < len(temps) else None
+        code_val = codes[idx] if idx < len(codes) else None
         if w_val is None and r_val is None:
             continue
 
@@ -99,11 +145,16 @@ async def get_weather(lat: float, lon: float) -> Dict[str, Any]:
         except Exception:
             hour_int = idx % 24
 
-        forecast_hours.append({
+        item = {
             "hour": hour_int,
             "wind_knots": float(w_val) if w_val is not None else 0.0,
             "rain_mm": float(r_val) if r_val is not None else 0.0,
-        })
+        }
+        if temp_val is not None:
+            item["temp_c"] = float(temp_val)
+        if code_val is not None:
+            item["condition"] = _weather_code_desc(code_val)
+        forecast_hours.append(item)
 
     return {
         "source": "open-meteo:forecast",
@@ -124,6 +175,7 @@ async def get_ocean(lat: float, lon: float) -> Dict[str, Any]:
     params = {
         "latitude": lat,
         "longitude": lon,
+        "current": "wave_height,wave_direction,wave_period,wind_wave_height,swell_wave_height",
         "hourly": "wave_height,wave_period,swell_wave_height,sea_surface_temperature,ocean_current_velocity",
         "timezone": "Asia/Kolkata",
         "forecast_days": 2,
@@ -154,6 +206,7 @@ async def get_ocean(lat: float, lon: float) -> Dict[str, Any]:
             }
         raise
 
+    current = data.get("current", {}) if isinstance(data, dict) else {}
     hourly = data.get("hourly", {}) if isinstance(data, dict) else {}
     waves = hourly.get("wave_height", [])
     periods = hourly.get("wave_period", [])
@@ -161,7 +214,7 @@ async def get_ocean(lat: float, lon: float) -> Dict[str, Any]:
     ssts = hourly.get("sea_surface_temperature", [])
     currents = hourly.get("ocean_current_velocity", [])
 
-    has_any_wave = any(w is not None for w in waves)
+    has_any_wave = any(w is not None for w in waves) or (current.get("wave_height") is not None)
     if not has_any_wave:
         logger.info("Open-Meteo marine returned all-null wave fields for (%.4f, %.4f)", lat, lon)
         return {
@@ -177,9 +230,21 @@ async def get_ocean(lat: float, lon: float) -> Dict[str, Any]:
             "fetched_at": datetime.now(timezone.utc).isoformat(),
         }
 
-    first_wave = next((float(w) for w in waves if w is not None), None)
-    first_period = next((float(p) for p in periods if p is not None), None)
-    first_swell = next((float(s) for s in swells if s is not None), None)
+    if current.get("wave_height") is not None:
+        first_wave = float(current["wave_height"])
+    else:
+        first_wave = next((float(w) for w in waves if w is not None), None)
+
+    if current.get("wave_period") is not None:
+        first_period = float(current["wave_period"])
+    else:
+        first_period = next((float(p) for p in periods if p is not None), None)
+
+    if current.get("swell_wave_height") is not None:
+        first_swell = float(current["swell_wave_height"])
+    else:
+        first_swell = next((float(s) for s in swells if s is not None), None)
+
     first_sst = next((float(t) for t in ssts if t is not None), None)
     raw_current = next((float(c) for c in currents if c is not None), None)
     first_current = kmh_to_knots(raw_current)

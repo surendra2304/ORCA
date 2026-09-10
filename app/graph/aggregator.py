@@ -32,6 +32,11 @@ AGGREGATOR_SYSTEM_TEMPLATE = (
     "6. Strictly DO NOT use phrasing like 'First option', 'Second option', 'Option 1', 'Alternatively', or bullet points. Give a single, warm, direct answer.\n"
     "7. Do NOT use asterisks (*), hashtags (#), bullet points (-), bold formatting, or emojis. Plain natural text only.\n"
     "8. Keep responses concise and spoken-friendly — 1 to 2 natural sentences.\n\n"
+    "WEATHER AND FORECASTING QUERIES:\n"
+    "When asked about the weather, weather report, forecast, wind, waves, or sea conditions:\n"
+    "- Directly give a comprehensive, accurate marine weather summary based on the JSON data: state the wind speed (in knots), wind gusts, wave height (in meters), rainfall/precipitation, and sea conditions.\n"
+    "- If future forecast hours are available in weather.forecast_hours, mention whether conditions will remain calm or worsen later today/tomorrow.\n"
+    "- Speak warmly in {language} in 2 to 3 natural conversational sentences without bullet points or machine codes.\n\n"
     "DOMAIN AND SAFETY RULES:\n"
     "Directly answer the user's specific query using ONLY the JSON data provided. "
     "A deterministic rule engine has already computed a safety verdict. "
@@ -181,7 +186,10 @@ async def aggregator_node(state: ORCAState, collector: TraceCollector) -> Dict[s
         o_data = agent_outputs.get("ocean", {})
 
         w_speed = w_data.get("wind_knots")
+        w_gust = w_data.get("gusts_knots")
+        w_rain = w_data.get("rain_mm")
         o_wave = o_data.get("wave_height_m")
+        o_swell = o_data.get("swell_height_m")
 
         if language == "te":
             parts = []
@@ -193,11 +201,17 @@ async def aggregator_node(state: ORCAState, collector: TraceCollector) -> Dict[s
                 parts.append("ఇప్పుడు సముద్రంలోకి వెళ్లవద్దు, ఇది సురక్షితం కాదు.")
             elif v_label:
                 parts.append("సముద్ర పరిస్థితులపై అధికారిక హెచ్చరికలు గమనించండి.")
+            elif w_speed is not None or o_wave is not None:
+                parts.append("ప్రస్తుతం సముద్ర వాతావరణం అనుకూలంగా ఉంది.")
 
             if w_speed is not None:
                 parts.append(f"గాలి వేగం {w_speed} నాట్లుగా ఉంది.")
+            if w_gust is not None and float(w_gust) > float(w_speed or 0):
+                parts.append(f"గాలి తుఫాను వేగం {w_gust} నాట్ల వరకు చేరవచ్చు.")
             if o_wave is not None:
                 parts.append(f"అలల ఎత్తు {o_wave} మీటర్లుగా ఉంది.")
+            if w_rain is not None and float(w_rain) > 0:
+                parts.append(f"వర్షం {w_rain} మి.మీ పడే అవకాశం ఉంది.")
             if not parts:
                 parts.append("సముద్ర వాతావరణ వివరాలు అందుబాటులో ఉన్నాయి.")
             final_answer = " ".join(parts)
@@ -211,11 +225,17 @@ async def aggregator_node(state: ORCAState, collector: TraceCollector) -> Dict[s
                 parts.append("अभी समुद्र में न जाएँ, यह सुरक्षित नहीं है।")
             elif v_label:
                 parts.append("समुद्र की स्थिति के लिए आधिकारिक सलाह देखें।")
+            elif w_speed is not None or o_wave is not None:
+                parts.append("वर्तमान में समुद्री मौसम अनुकूल है।")
 
             if w_speed is not None:
                 parts.append(f"हवा की गति {w_speed} नॉट्स है।")
+            if w_gust is not None and float(w_gust) > float(w_speed or 0):
+                parts.append(f"हवा के झोंके {w_gust} नॉट्स तक पहुँच सकते हैं।")
             if o_wave is not None:
                 parts.append(f"लहरों की ऊंचाई {o_wave} मीटर है।")
+            if w_rain is not None and float(w_rain) > 0:
+                parts.append(f"बारिश {w_rain} मिमी तक होने की संभावना है।")
             if not parts:
                 parts.append("समुद्री मौसम का विवरण उपलब्ध है।")
             final_answer = " ".join(parts)
@@ -226,14 +246,18 @@ async def aggregator_node(state: ORCAState, collector: TraceCollector) -> Dict[s
             elif v_label == "CAUTION":
                 parts.append("கடல் சூழல் சற்று கொந்தளிப்பாக உள்ளது, எச்சரிக்கையுடன் இருங்கள்.")
             elif v_label == "NO_GO":
-                parts.append("இப்போது கடலுக்குச் செல்ல வேண்டாம், இது பாதுகாப்பானது அல்ல.")
+                parts.append("இப்போது கடலுக்குச் செல்ல வேண்டாம், ఇది பாதுகாப்பானது அல்ல.")
             elif v_label:
                 parts.append("கடல் நிலைமை குறித்த அதிகாரப்பூர்வ எச்சரிக்கைகளை கவனியுங்கள்.")
+            elif w_speed is not None or o_wave is not None:
+                parts.append("தற்போது கடல் வானிலை சீராக உள்ளது.")
 
             if w_speed is not None:
                 parts.append(f"காற்றின் வேகம் {w_speed} நாட்ஸ்.")
             if o_wave is not None:
                 parts.append(f"அலை உயரம் {o_wave} மீட்டர்.")
+            if w_rain is not None and float(w_rain) > 0:
+                parts.append(f"மழை {w_rain} மி.மீ வரை பெய்ய வாய்ப்புள்ளது.")
             if not parts:
                 parts.append("கடல் வானிலை தகவல்கள் கிடைக்கின்றன.")
             final_answer = " ".join(parts)
@@ -247,11 +271,17 @@ async def aggregator_node(state: ORCAState, collector: TraceCollector) -> Dict[s
                 parts.append("Do not head out to sea right now, conditions are dangerous.")
             elif v_label:
                 parts.append("Please check official maritime advisories for safety updates.")
+            elif w_speed is not None or o_wave is not None:
+                parts.append("Current marine weather conditions are favorable.")
 
             if w_speed is not None:
                 parts.append(f"Wind speed is {w_speed} knots.")
+            if w_gust is not None and float(w_gust) > float(w_speed or 0):
+                parts.append(f"Wind gusts may reach up to {w_gust} knots.")
             if o_wave is not None:
                 parts.append(f"Wave height is {o_wave} meters.")
+            if w_rain is not None and float(w_rain) > 0:
+                parts.append(f"Expected precipitation is {w_rain} mm.")
             if not parts:
                 parts.append("Marine weather conditions are available.")
             final_answer = " ".join(parts)
