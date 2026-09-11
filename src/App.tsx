@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
+import { LocationProvider } from './context/LocationContext';
 
 // Layouts
 import { FishermanLayout } from './layouts/FishermanLayout';
@@ -37,7 +38,8 @@ const RoleHomeRedirect: React.FC = () => {
 export const App: React.FC = () => {
   return (
     <AppProvider>
-      <BrowserRouter>
+      <LocationProvider>
+        <BrowserRouter>
         <Routes>
           {/* ================= 1. ONBOARDING FLOW ================= */}
           {/* Page 1: Welcome Screen */}
@@ -102,6 +104,7 @@ export const App: React.FC = () => {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </LocationProvider>
     </AppProvider>
   );
 };

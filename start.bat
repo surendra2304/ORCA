@@ -14,7 +14,7 @@ timeout /t 5 /nobreak >nul
 
 REM Start Frontend
 echo Starting Frontend Development Server...
-start "ORCA Frontend" cmd /k "cd /d %~dp0\remix-remix-orca-fishermen && npm run dev"
+start "ORCA Frontend" cmd /k "cd /d %~dp0 && npm run dev"
 
 echo.
 echo ==========================================
