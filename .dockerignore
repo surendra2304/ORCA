@@ -1,4 +1,4 @@
-﻿node_modules
+node_modules
 .venv
 venv
 __pycache__
@@ -18,4 +18,4 @@ videos
 *.bat
 backend
 widget
-remix-remix-orca-fishermen
+remix-remix-orca-fishermen/node_modules

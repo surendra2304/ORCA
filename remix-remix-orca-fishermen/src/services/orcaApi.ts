@@ -3,7 +3,7 @@
  * Connects the Fishermen Dashboard to the Python FastAPI multi-agent backend.
  */
 
-const ORCA_BASE_URL = import.meta.env.VITE_ORCA_API_URL || 'http://localhost:8000';
+const ORCA_BASE_URL = import.meta.env.VITE_ORCA_API_URL || '';
 
 export interface QueryRequest {
   text: string;

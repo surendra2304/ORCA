@@ -3,20 +3,18 @@
 # Combines React 19 Frontend + FastAPI Multi-Agent Backend on a single port
 # ==============================================================================
 
-# Stage 1: Build React 19 Vite Frontend
+# Stage 1: Build React 19 Frontend (Fishermen Voice UI)
 FROM node:20-slim AS frontend-builder
-WORKDIR /app
+WORKDIR /app/frontend
 
 # Install npm dependencies
-COPY package*.json ./
+COPY remix-remix-orca-fishermen/package*.json ./
 RUN npm ci || npm install
 
 # Copy frontend source and configuration files
-COPY index.html vite.config.ts tsconfig*.json ./
-COPY src/ ./src/
-COPY public/ ./public/
+COPY remix-remix-orca-fishermen/ ./
 
-# Build production assets into /app/dist
+# Build production assets into /app/frontend/dist
 RUN npm run build
 
 # Stage 2: Python 3.11 Production Server
@@ -44,7 +42,7 @@ COPY data/ ./data/
 COPY rules/ ./rules/
 
 # Copy compiled frontend from Stage 1 into /app/dist
-COPY --from=frontend-builder /app/dist ./dist
+COPY --from=frontend-builder /app/frontend/dist ./dist
 
 # Expose default port
 EXPOSE 8000
