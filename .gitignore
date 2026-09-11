@@ -50,3 +50,4 @@ sessions/
 *.mp3
 pdf_text.txt
 scripts/extract_pdf.py
+.vitest/

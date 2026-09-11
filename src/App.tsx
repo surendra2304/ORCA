@@ -97,8 +97,13 @@ export const App: React.FC = () => {
           <Route path="/fishing" element={<Navigate to="/others/fishing" replace />} />
           <Route path="/productivity" element={<Navigate to="/others/productivity" replace />} />
           <Route path="/analysis" element={<Navigate to="/others/analysis" replace />} />
+          <Route path="/voice" element={<Navigate to="/fisherman/voice" replace />} />
+          <Route path="/chat" element={<Navigate to="/fisherman/voice" replace />} />
+          <Route path="/manual" element={<Navigate to="/fisherman/manual" replace />} />
+          <Route path="/recommendation" element={<Navigate to="/fisherman/recommendation" replace />} />
           <Route path="/disasters" element={<Navigate to="/others/disasters" replace />} />
           <Route path="/risk-prediction" element={<Navigate to="/others/risk-prediction" replace />} />
+
 
           {/* Catch-all Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

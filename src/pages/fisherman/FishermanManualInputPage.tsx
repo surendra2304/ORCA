@@ -2,7 +2,8 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { MarineMap } from '../../components/MarineMap';
-import { COASTAL_REGIONS } from '../../services/marineData';
+import { COASTAL_REGIONS, ALL_FISHING_ZONES } from '../../services/marineData';
+import { AIService } from '../../services/aiService';
 import { 
   SlidersHorizontal, 
   ArrowRight, 
@@ -10,26 +11,41 @@ import {
   Calendar, 
   Clock, 
   Target, 
-  Mic,
+  Mic, 
   Sparkles
 } from 'lucide-react';
 
 export const FishermanManualInputPage: React.FC = () => {
   const { 
     t, 
+    language,
     selectedRegion, 
     setSelectedRegion, 
     voyageParams, 
     setVoyageParams, 
-    recommendedZone 
+    setRecommendedZone 
   } = useApp();
 
   const navigate = useNavigate();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const currentRegionalZones = ALL_FISHING_ZONES.filter(z => z.regionId === selectedRegion.id);
+    const zonesToUse = currentRegionalZones.length > 0 ? currentRegionalZones : ALL_FISHING_ZONES.slice(0, 3);
+    const rec = AIService.calculateRecommendation(
+      {
+        regionId: selectedRegion.id,
+        date: voyageParams.date,
+        time: voyageParams.time,
+        purpose: voyageParams.purpose,
+        language
+      },
+      zonesToUse
+    );
+    setRecommendedZone(rec);
     navigate('/fisherman/recommendation'); // Go to Fisherman Page 3
   };
+
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 sm:px-6 space-y-6 select-none">

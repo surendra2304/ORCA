@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { Globe, User } from 'lucide-react';
+import { Globe, User, ChevronDown, CheckCircle2, Fish } from 'lucide-react';
 import { SUPPORTED_LANGUAGES } from '../i18n/translations';
 
 export const Header: React.FC = () => {
   const { t, language, setLanguage, userName, userRole } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
+  const [isLangOpen, setIsLangOpen] = useState(false);
 
   // Hide header on Page 1 (Welcome) and Page 2 (Language Selection) for ultra-minimalist onboarding
   if (location.pathname === '/' || location.pathname === '/language') {
@@ -45,18 +46,59 @@ export const Header: React.FC = () => {
         </div>
 
         {/* Right Action Bar */}
-        <div className="ml-2 shrink-0 flex items-center space-x-2 sm:space-x-4">
-          {/* Quick Language Selector */}
-          <div className="relative flex items-center">
+        <div className="ml-2 shrink-0 flex items-center space-x-2 sm:space-x-3">
+          {/* Fisherman Experience Switcher */}
+          <button
+            onClick={() => navigate('/fisherman/voice')}
+            className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-[#20B2AA] bg-[#e0f5f4] hover:bg-[#20B2AA] hover:text-white rounded-xl transition-all"
+            title="Switch to Fisherman Voice Experience"
+          >
+            <Fish className="w-3.5 h-3.5" />
+            <span>Fisherman Voice</span>
+          </button>
+
+          {/* Quick Inline Language Dropdown */}
+          <div className="relative">
             <button
-              onClick={() => navigate('/language')}
+              onClick={() => setIsLangOpen(!isLangOpen)}
               title={t.languageSelectionTitle}
-              className="flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-[#e0f5f4] hover:text-[#20B2AA] rounded-lg border border-slate-200 transition-colors"
+              className="flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-slate-50 hover:bg-[#e0f5f4] hover:text-[#20B2AA] rounded-xl border border-slate-200 transition-colors"
             >
               <Globe className="w-3.5 h-3.5 text-[#20B2AA]" />
               <span className="font-semibold max-w-16 truncate sm:max-w-none">{currentLangObj.nativeName}</span>
+              <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>
+
+            {isLangOpen && (
+              <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl border border-slate-200 shadow-xl p-2 z-50">
+                <div className="flex items-center justify-between px-2 py-1.5 border-b border-slate-100 mb-1">
+                  <span className="text-xs font-bold text-slate-700">Select Language</span>
+                  <span className="text-[10px] text-slate-400 font-semibold">9 Languages</span>
+                </div>
+                <div className="max-h-60 overflow-y-auto space-y-0.5">
+                  {SUPPORTED_LANGUAGES.map((l) => (
+                    <button
+                      key={l.code}
+                      onClick={() => {
+                        setLanguage(l.code);
+                        setIsLangOpen(false);
+                      }}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between hover:bg-slate-50 transition-all ${
+                        language === l.code ? 'bg-[#e0f5f4] text-[#20B2AA] font-bold' : 'text-slate-700'
+                      }`}
+                    >
+                      <div>
+                        <div className="font-bold">{l.nativeName}</div>
+                        <div className="text-[10px] text-slate-400">{l.name}</div>
+                      </div>
+                      {language === l.code && <CheckCircle2 className="w-3.5 h-3.5 text-[#20B2AA]" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+
 
           {/* User Profile with Sea-Shell Shaped Visual Reference */}
           <div 

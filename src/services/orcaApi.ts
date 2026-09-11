@@ -3,9 +3,12 @@
  * Connects the Fishermen Dashboard to the Python FastAPI multi-agent backend.
  */
 
+import { AIService } from './aiService';
+
 const ORCA_BASE_URL = import.meta.env.VITE_ORCA_API_URL || '';
 
 export interface QueryRequest {
+
   text: string;
   session_id?: string;
   language?: string;
@@ -232,29 +235,70 @@ export async function sendQuery(req: QueryRequest): Promise<QueryResponse> {
  * Best for dashboard pre-loading (non-chat use cases).
  */
 export async function sendQuerySync(req: QueryRequest, signal?: AbortSignal): Promise<SyncQueryResponse> {
-  const res = await fetch(`${ORCA_BASE_URL}/query?sync=true`, {
-    method: 'POST',
-    signal,
-    headers: { 
-      'Content-Type': 'application/json',
-      'Connection': 'keep-alive',
-    },
-    body: JSON.stringify({
-      text: req.text,
-      session_id: req.session_id,
-      language: req.language || 'en',
-      vessel_class: req.vessel_class || 'small_fishing_boat',
-      mode: req.mode || 'real',
-      lat: req.lat,
-      lon: req.lon,
-      location_name: req.location_name,
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`ORCA sync query failed (${res.status}): ${err}`);
+  const timeoutMs = 8000;
+  const timeoutController = new AbortController();
+  const timer = setTimeout(() => timeoutController.abort(), timeoutMs);
+
+  const combinedSignal = signal
+    ? anySignal([signal, timeoutController.signal])
+    : timeoutController.signal;
+
+  try {
+    const res = await fetch(`${ORCA_BASE_URL}/query?sync=true`, {
+      method: 'POST',
+      signal: combinedSignal,
+      headers: { 
+        'Content-Type': 'application/json',
+        'Connection': 'keep-alive',
+      },
+      body: JSON.stringify({
+        text: req.text,
+        session_id: req.session_id,
+        language: req.language || 'en',
+        vessel_class: req.vessel_class || 'small_fishing_boat',
+        mode: req.mode || 'real',
+        lat: req.lat,
+        lon: req.lon,
+        location_name: req.location_name,
+      }),
+    });
+
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      console.warn(`ORCA sync query returned status ${res.status}. Falling back to client marine advisory.`);
+      return AIService.generateMarineAdvisoryResponse(
+        req.text,
+        { lat: req.lat ?? 16.9891, lon: req.lon ?? 82.2475, name: req.location_name || 'Coastal Port' },
+        req.language || 'en'
+      ) as unknown as SyncQueryResponse;
+    }
+
+    return await res.json();
+  } catch (err: any) {
+    clearTimeout(timer);
+    if (signal?.aborted) {
+      throw err;
+    }
+    console.warn('ORCA sync query failed or timed out. Using satellite advisory cache fallback:', err?.message || err);
+    return AIService.generateMarineAdvisoryResponse(
+      req.text,
+      { lat: req.lat ?? 16.9891, lon: req.lon ?? 82.2475, name: req.location_name || 'Coastal Port' },
+      req.language || 'en'
+    ) as unknown as SyncQueryResponse;
   }
-  return res.json();
+}
+
+function anySignal(signals: AbortSignal[]): AbortSignal {
+  const controller = new AbortController();
+  for (const sig of signals) {
+    if (sig.aborted) {
+      controller.abort();
+      return controller.signal;
+    }
+    sig.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+  return controller.signal;
 }
 
 /**

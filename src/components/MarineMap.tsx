@@ -141,13 +141,15 @@ export const MarineMap: React.FC<MarineMapProps> = ({
         </svg>
       `;
 
+      const isSelected = zone.id === selectedZoneId;
       const zoneIconHtml = `
         <div class="zone-marker-wrapper cursor-pointer select-none">
-          <div class="zone-circle ${colorClass}">
+          <div class="zone-circle ${colorClass} ${isSelected ? 'ring-4 ring-[#20B2AA] scale-110 shadow-xl animate-bounce' : ''}">
             ${fishSvg}
           </div>
         </div>
       `;
+
 
       const zoneIcon = L.divIcon({
         className: 'custom-zone-marker',
@@ -279,7 +281,7 @@ export const MarineMap: React.FC<MarineMapProps> = ({
       });
     }
 
-  }, [fishingZones, recommendedZone, riskZones, selectedRegion, showOnlyRecommended, currentLayer, t]);
+  }, [fishingZones, recommendedZone, riskZones, selectedRegion, showOnlyRecommended, currentLayer, t, selectedZoneId]);
 
   // Layer Overlays (Thermal SST, Weather, Ocean current waves, Chlorophyll)
   const renderLayerOverlays = (

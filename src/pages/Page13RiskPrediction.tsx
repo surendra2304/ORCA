@@ -70,11 +70,12 @@ export const Page13RiskPrediction: React.FC = () => {
 
           <button
             onClick={triggerManualRiskRefresh}
-            className="p-1.5 rounded-lg text-slate-500 hover:text-[#20B2AA] hover:bg-white transition-colors"
+            className="p-1.5 rounded-lg text-slate-500 hover:text-[#20B2AA] hover:bg-white transition-all cursor-pointer active:scale-90"
             title="Recalculate now"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
+
         </div>
       </div>
 
@@ -176,8 +177,9 @@ export const Page13RiskPrediction: React.FC = () => {
               {riskPrediction.riskZones.map((rz, idx) => (
                 <div
                   key={rz.id}
-                  className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs transition-all hover:border-red-200"
+                  className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs transition-all hover:border-red-300 hover:bg-red-50/20 cursor-pointer active:scale-99"
                 >
+
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center space-x-2 font-bold text-slate-900">
                       <span className="w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px]">

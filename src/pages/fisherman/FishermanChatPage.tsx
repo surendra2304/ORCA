@@ -24,6 +24,8 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { sendQuerySync, type VerdictData, type AgentOutputs } from '../../services/orcaApi';
+import { AIService } from '../../services/aiService';
+import { SUPPORTED_LANGUAGES, LanguageCode } from '../../i18n/translations';
 
 // ─── Chat Message Model ───────────────────────────────────────────────────────
 interface ChatTurn {
@@ -175,6 +177,7 @@ export const FishermanChatPage: React.FC = () => {
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [currentTurn, setCurrentTurn] = useState<ChatTurn | null>(null);
   const [showPortSelector, setShowPortSelector] = useState(false);
+  const [showLangSelector, setShowLangSelector] = useState(false);
 
   // Audio & Voice Refs
   const recognitionRef = useRef<any>(null);
@@ -186,7 +189,10 @@ export const FishermanChatPage: React.FC = () => {
   const isSpeakingRef = useRef(false);
   const isProcessingRef = useRef(false);
   const isVoiceOpenRef = useRef(false);
+  const startSpeechRecognitionRef = useRef<() => void>(() => {});
+  const executeQueryRef = useRef<(q: string, speak?: boolean) => Promise<void>>(async () => {});
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+
 
   isVoiceOpenRef.current = isVoiceOpen;
   isSpeakingRef.current = isSpeaking;
@@ -435,7 +441,7 @@ export const FishermanChatPage: React.FC = () => {
             if (isVoiceOpenRef.current && !isProcessingRef.current) {
               setTimeout(() => {
                 if (isVoiceOpenRef.current && !isProcessingRef.current && !isSpeakingRef.current) {
-                  startSpeechRecognition();
+                  startSpeechRecognitionRef.current();
                 }
               }, 400);
             }
@@ -443,13 +449,44 @@ export const FishermanChatPage: React.FC = () => {
         }
       } catch (err: any) {
         if (err?.name === 'AbortError' || controller.signal.aborted) return;
-        console.error('Query execution error:', err);
+        console.warn('Backend query error or offline. Using client marine intelligence:', err);
+        const fallbackResp = AIService.generateMarineAdvisoryResponse(
+          trimmed,
+          location,
+          detectedLang
+        );
+        const assistantTurn: ChatTurn = {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          text: fallbackResp.final_answer,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          verdict: fallbackResp.verdict,
+          agentOutputs: fallbackResp.agent_outputs,
+          language: fallbackResp.language,
+        };
+
+        setCurrentTurn(assistantTurn);
+        setChatHistory((prev) => [...prev, userTurn, assistantTurn]);
         setIsProcessing(false);
         isProcessingRef.current = false;
+
+        if (shouldSpeak) {
+          playAudioAloud(fallbackResp.final_answer, fallbackResp.language, () => {
+            if (isVoiceOpenRef.current && !isProcessingRef.current) {
+              setTimeout(() => {
+                if (isVoiceOpenRef.current && !isProcessingRef.current && !isSpeakingRef.current) {
+                  startSpeechRecognitionRef.current();
+                }
+              }, 400);
+            }
+          });
+        }
       }
     },
     [location, language, playAudioAloud, stopAllAudio]
   );
+
+
 
   // ─── Speech Recognition Engine ──────────────────────────────────────────────
   const startSpeechRecognition = useCallback(() => {
@@ -502,7 +539,7 @@ export const FishermanChatPage: React.FC = () => {
             const q = accumulatedSpeechRef.current.trim();
             if (!q || isSpeakingRef.current || isProcessingRef.current) return;
             if (q.length >= 2) {
-              executeQuery(q, true);
+              executeQueryRef.current(q, true);
             }
           }, delay);
         }
@@ -529,7 +566,11 @@ export const FishermanChatPage: React.FC = () => {
     } catch (e) {
       console.warn('Failed to start speech recognition:', e);
     }
-  }, [language, stopAllAudio, executeQuery]);
+  }, [language, stopAllAudio]);
+
+  startSpeechRecognitionRef.current = startSpeechRecognition;
+  executeQueryRef.current = executeQuery;
+
 
   // Toggle Microphone (Instant responsive stop & restart)
   const handleMicToggle = () => {
@@ -630,11 +671,19 @@ export const FishermanChatPage: React.FC = () => {
           <div className="flex items-center gap-2">
             {/* Language toggle in voice mode */}
             <button
-              onClick={() => setLanguage(language === 'te' ? 'en' : 'te')}
+              onClick={() => {
+                const popular: LanguageCode[] = ['te', 'en', 'hi', 'ta', 'bn'];
+                const curIdx = popular.indexOf(language as any);
+                const nextLang = popular[(curIdx + 1) % popular.length] || 'en';
+                setLanguage(nextLang);
+              }}
               className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-[#20B2AA] rounded-full border border-slate-700 transition-colors"
+              title="Cycle language"
             >
-              {language === 'te' ? 'తెలుగు' : 'English'}
+              {SUPPORTED_LANGUAGES.find(l => l.code === language)?.nativeName || 'English'}
             </button>
+
+
 
             <button
               onClick={handleEndVoiceSession}
@@ -828,13 +877,47 @@ export const FishermanChatPage: React.FC = () => {
               )}
             </div>
 
-            {/* Language Switcher */}
-            <button
-              onClick={() => setLanguage(language === 'te' ? 'en' : 'te')}
-              className="px-3 py-1.5 rounded-full bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 border border-slate-200 transition-colors"
-            >
-              {language === 'te' ? 'తెలుగు' : 'English'}
-            </button>
+            {/* 9-Language Switcher Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowLangSelector(!showLangSelector);
+                  setShowPortSelector(false);
+                }}
+                className="px-3 py-1.5 rounded-full bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 border border-slate-200 transition-colors flex items-center gap-1.5"
+              >
+                <span>{SUPPORTED_LANGUAGES.find(l => l.code === language)?.nativeName || 'English'}</span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+
+              {showLangSelector && (
+                <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl border border-slate-200 shadow-xl p-2 z-50">
+                  <div className="px-2 py-1.5 border-b border-slate-100 mb-1 text-xs font-bold text-slate-700">
+                    Select Language
+                  </div>
+                  <div className="max-h-60 overflow-y-auto space-y-0.5">
+                    {SUPPORTED_LANGUAGES.map((l) => (
+                      <button
+                        key={l.code}
+                        onClick={() => {
+                          setLanguage(l.code);
+                          setShowLangSelector(false);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between hover:bg-slate-50 transition-all ${
+                          language === l.code ? 'bg-[#e0f5f4] text-[#20B2AA] font-bold' : 'text-slate-700'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold">{l.nativeName}</div>
+                          <div className="text-[10px] text-slate-400">{l.name}</div>
+                        </div>
+                        {language === l.code && <CheckCircle2 className="w-3.5 h-3.5 text-[#20B2AA]" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Plan a trip */}
             <button
@@ -843,8 +926,19 @@ export const FishermanChatPage: React.FC = () => {
             >
               {language === 'te' ? 'యాత్ర ప్రణాళిక' : 'Plan a trip'}
             </button>
+
+            {/* Officer Dashboard Switcher */}
+            <button
+              onClick={() => navigate('/others/home')}
+              className="hidden sm:flex items-center gap-1 px-3 py-1.5 rounded-full bg-slate-50 hover:bg-[#e0f5f4] text-xs font-semibold text-slate-600 hover:text-[#20B2AA] border border-slate-200 transition-all"
+              title="Switch to Maritime Officer Dashboard"
+            >
+              <Compass className="w-3.5 h-3.5 text-[#20B2AA]" />
+              <span>Officer Hub</span>
+            </button>
           </div>
         </header>
+
 
         {/* Main Section */}
         {chatHistory.length === 0 ? (

@@ -117,7 +117,12 @@ export const OthersHomePage: React.FC = () => {
 
             <div className="space-y-2.5">
               {riskZones.slice(0, 3).map((rz) => (
-                <div key={rz.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+                <div
+                  key={rz.id}
+                  onClick={() => navigate('/others/risk-prediction')}
+                  className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 hover:border-red-300 hover:bg-red-50/30 transition-all text-xs cursor-pointer active:scale-99"
+                  title="View Risk Zone Analytics"
+                >
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-bold text-slate-900 truncate max-w-[180px]">{rz.name}</span>
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
@@ -142,7 +147,7 @@ export const OthersHomePage: React.FC = () => {
               </div>
               <button
                 onClick={() => navigate('/others/productivity')}
-                className="text-[11px] text-[#20B2AA] font-semibold hover:underline"
+                className="text-[11px] text-[#20B2AA] font-semibold hover:underline cursor-pointer"
               >
                 {t.viewDetails} →
               </button>
@@ -150,7 +155,12 @@ export const OthersHomePage: React.FC = () => {
 
             <div className="space-y-2">
               {TOP_NATIONAL_PRODUCTIVITY_ZONES.slice(0, 3).map(zone => (
-                <div key={zone.rank} className="flex items-center justify-between p-2.5 rounded-lg bg-emerald-50/50 border border-emerald-100 text-xs">
+                <div
+                  key={zone.rank}
+                  onClick={() => navigate('/others/productivity')}
+                  className="flex items-center justify-between p-2.5 rounded-lg bg-emerald-50/50 border border-emerald-100 hover:border-emerald-300 hover:bg-emerald-50 transition-all text-xs cursor-pointer active:scale-99"
+                  title="View Productivity Analytics"
+                >
                   <div>
                     <div className="font-bold text-slate-800">#{zone.rank} {zone.name}</div>
                     <div className="text-[10px] text-slate-500">{zone.region} • {zone.catchForecast}</div>
@@ -162,6 +172,7 @@ export const OthersHomePage: React.FC = () => {
               ))}
             </div>
           </div>
+
 
         </div>
       </div>

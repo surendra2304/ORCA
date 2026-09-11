@@ -80,11 +80,12 @@ export const Page12Disasters: React.FC = () => {
               <button
                 key={item.id}
                 onClick={() => setSelectedDisasterId(item.id)}
-                className={`p-3 rounded-xl border text-left transition-all ${
+                className={`p-3 rounded-xl border text-left transition-all cursor-pointer active:scale-98 ${
                   isSelected
                     ? 'border-amber-600 bg-amber-50/70 shadow-xs ring-2 ring-amber-500/20'
-                    : 'border-slate-200 bg-white hover:bg-slate-50'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-amber-400/50'
                 }`}
+
               >
                 <div className="text-xs font-bold text-slate-900 truncate">
                   {item.name}

@@ -148,7 +148,8 @@ export const Page6Productivity: React.FC = () => {
             {TOP_NATIONAL_PRODUCTIVITY_ZONES.map(item => (
               <div
                 key={item.rank}
-                className="p-3 rounded-xl bg-slate-50 border border-slate-100 hover:border-[#20B2AA]/40 hover:bg-[#e0f5f4]/30 transition-all text-xs"
+                className="p-3 rounded-xl bg-slate-50 border border-slate-100 hover:border-[#20B2AA] hover:bg-[#e0f5f4]/40 transition-all text-xs cursor-pointer active:scale-99"
+
               >
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center space-x-2 font-bold text-slate-900">

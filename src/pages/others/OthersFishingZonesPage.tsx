@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { MarineMap } from '../../components/MarineMap';
-import { COASTAL_REGIONS } from '../../services/marineData';
+import { COASTAL_REGIONS, FishingZone } from '../../services/marineData';
 import { 
   Fish, 
   MapPin, 
@@ -11,11 +11,16 @@ import {
   ShieldAlert, 
   CheckCircle2, 
   Wind,
-  Thermometer
+  Thermometer,
+  Navigation,
+  ExternalLink
 } from 'lucide-react';
 
 export const OthersFishingZonesPage: React.FC = () => {
   const { t, selectedRegion, setSelectedRegion, fishingZones } = useApp();
+  const [selectedZoneId, setSelectedZoneId] = useState<string>(fishingZones[0]?.id || '');
+
+  const activeZone = fishingZones.find(z => z.id === selectedZoneId) || fishingZones[0];
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-5 sm:px-6 space-y-6 select-none">
@@ -41,7 +46,9 @@ export const OthersFishingZonesPage: React.FC = () => {
             value={selectedRegion.id}
             onChange={(e) => {
               const reg = COASTAL_REGIONS.find(r => r.id === e.target.value);
-              if (reg) setSelectedRegion(reg);
+              if (reg) {
+                setSelectedRegion(reg);
+              }
             }}
             className="px-2.5 py-1 text-xs font-bold text-slate-700 bg-transparent border-none focus:outline-hidden"
           >
@@ -68,36 +75,58 @@ export const OthersFishingZonesPage: React.FC = () => {
             </div>
 
             <div className="space-y-3">
-              {fishingZones.map(zone => (
-                <div
-                  key={zone.id}
-                  className={`p-3.5 rounded-xl border transition-all ${
-                    zone.isRecommendedBest
-                      ? 'border-[#20B2AA] bg-[#e0f5f4]/50 ring-1 ring-[#20B2AA]/30'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-bold text-slate-900">{zone.code} — {zone.name}</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                      zone.productivityScore > 80 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                    }`}>
-                      {zone.productivityScore}% Potential
-                    </span>
-                  </div>
+              {fishingZones.map(zone => {
+                const isSelected = selectedZoneId === zone.id;
+                return (
+                  <div
+                    key={zone.id}
+                    onClick={() => setSelectedZoneId(zone.id)}
+                    className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'border-[#20B2AA] bg-[#e0f5f4]/60 ring-2 ring-[#20B2AA]/30 shadow-md'
+                        : zone.isRecommendedBest
+                        ? 'border-[#20B2AA]/60 bg-[#e0f5f4]/20 hover:border-[#20B2AA]'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center space-x-1.5">
+                        <span className="text-xs font-bold text-slate-900">{zone.code} — {zone.name}</span>
+                        {zone.isRecommendedBest && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 bg-[#20B2AA] text-white rounded">
+                            BEST
+                          </span>
+                        )}
+                      </div>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                        zone.productivityScore > 80 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {zone.productivityScore}% Potential
+                      </span>
+                    </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 mb-2">
-                    <div><strong>{t.distanceFromUser}:</strong> {zone.distanceKm} {t.kmUnit}</div>
-                    <div><strong>{t.bestTimeToGo}:</strong> {zone.bestTime}</div>
-                    <div><strong>{t.seaTemperature}:</strong> {zone.sstCelsius}{t.celsiusUnit}</div>
-                    <div><strong>{t.riskLevel}:</strong> {zone.riskLevel}</div>
-                  </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 mb-2">
+                      <div><strong>{t.distanceFromUser}:</strong> {zone.distanceKm} {t.kmUnit}</div>
+                      <div><strong>{t.bestTimeToGo}:</strong> {zone.bestTime}</div>
+                      <div><strong>{t.seaTemperature}:</strong> {zone.sstCelsius}{t.celsiusUnit}</div>
+                      <div><strong>{t.riskLevel}:</strong> {zone.riskLevel}</div>
+                    </div>
 
-                  <div className="text-[10px] text-slate-500 italic bg-slate-50 p-2 rounded border border-slate-100">
-                    {zone.notes}
+                    <div className="text-[10px] text-slate-500 italic bg-white/70 p-2 rounded border border-slate-100 flex items-center justify-between">
+                      <span className="truncate pr-2">{zone.notes}</span>
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${zone.coordinates.lat},${zone.coordinates.lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[10px] font-bold text-[#20B2AA] hover:underline flex items-center gap-0.5 shrink-0"
+                      >
+                        GPS <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -109,13 +138,15 @@ export const OthersFishingZonesPage: React.FC = () => {
               {selectedRegion.name} — Offshore Fishing Map
             </span>
             <span className="text-[11px] text-[#20B2AA] font-semibold">
-              Tap any zone marker to view details
+              Selected: {activeZone?.code || 'None'} ({activeZone?.name})
             </span>
           </div>
 
           <MarineMap
             showOnlyRecommended={false}
             customHeight="h-[480px] sm:h-[540px]"
+            selectedZoneId={selectedZoneId}
+            onZoneSelect={(z) => setSelectedZoneId(z.id)}
           />
         </div>
 
@@ -124,3 +155,4 @@ export const OthersFishingZonesPage: React.FC = () => {
     </div>
   );
 };
+

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { MarineMap } from '../components/MarineMap';
 import { COASTAL_REGIONS } from '../services/marineData';
+
 import { AIService } from '../services/aiService';
 import { 
   ResponsiveContainer, 
@@ -74,7 +76,9 @@ const SPATIAL_CHART_DATA = [
 
 export const Page7MarineAnalysis: React.FC = () => {
   const { t, language, selectedRegion, setSelectedRegion, riskZones } = useApp();
+  const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState<AnalysisCategory>('SST');
+
 
   // Dynamic AI Insight generation based on category & region
   const aiInsight = AIService.getCategoryInsight(activeCategory, language, selectedRegion.name);
@@ -277,7 +281,12 @@ export const Page7MarineAnalysis: React.FC = () => {
             </div>
 
             {riskZones.slice(0, 2).map(rz => (
-              <div key={rz.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+              <div
+                key={rz.id}
+                onClick={() => navigate('/others/risk-prediction')}
+                className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 hover:border-red-300 hover:bg-red-50/30 transition-all text-xs cursor-pointer active:scale-99"
+                title="View Full Risk Matrix"
+              >
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-slate-800">{rz.name}</span>
                   <span className="text-[10px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
@@ -290,6 +299,7 @@ export const Page7MarineAnalysis: React.FC = () => {
               </div>
             ))}
           </div>
+
 
         </div>
       </div>
